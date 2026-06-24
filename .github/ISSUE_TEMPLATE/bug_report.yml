@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a problem with aico
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill out the sections below.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command(s) you ran.
+      placeholder: |
+        1. aico run pi ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: dry-run
+    attributes:
+      label: Output of `--dry-run`
+      description: If relevant, paste the output of the same command with `--dry-run`.
+      render: shell
+  - type: input
+    id: aico-version
+    attributes:
+      label: aico version
+      placeholder: e.g. v0.1.0 or commit hash
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Container runtime
+      options:
+        - Docker
+        - Podman
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - Linux (WSL2)
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Add `--verbose` output if available.
+      render: shell
