@@ -1,0 +1,27 @@
+# Build output
+/aico
+/aico.exe
+/dist/
+
+# Go
+*.test
+*.out
+*.prof
+coverage.out
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Agent harness internals (not part of the aico product)
+/.agents/
+/skills-lock.json
+/.aico-impl/
+
+# Point-in-time review artifact
+/code-review.md
