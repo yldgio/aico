@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-24
+
 ### Added
 
 - `aico run <agent> [path]` — create or resume an isolated container for an AI
@@ -22,4 +24,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--new`, `--image`, `--runtime`, `--verbose`, and `--dry-run` flags.
 - GoReleaser configuration and GitHub Actions release pipeline for six targets.
 
-[Unreleased]: https://github.com/yldgio/aico/commits/main
+[Unreleased]: https://github.com/yldgio/aico/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/yldgio/aico/releases/tag/v0.1.0
