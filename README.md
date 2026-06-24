@@ -25,9 +25,25 @@ Starting an agent in a clean environment usually means: build an image, mount th
 
 ## Install
 
+### With `go install` (works today)
+
+If you have Go 1.26+:
+
+```sh
+go install github.com/yldgio/aico@latest
+```
+
+This builds `aico` and installs it to `$(go env GOPATH)/bin` (make sure that's on your `PATH`).
+
 ### From a release
 
-Download the binary for your platform from the [releases page](https://github.com/yldgio/aico/releases), unpack it, and put `aico` on your `PATH`.
+Download the prebuilt binary for your platform from the [releases page](https://github.com/yldgio/aico/releases), unpack it, and put `aico` on your `PATH`:
+
+```sh
+# example: Linux x86_64
+curl -sL https://github.com/yldgio/aico/releases/latest/download/aico_*_linux_amd64.tar.gz | tar xz
+sudo mv aico /usr/local/bin/
+```
 
 ### From source
 
