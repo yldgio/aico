@@ -54,6 +54,15 @@ aico uninstall
 Removes the binary, all aico containers, the agent image, and auth volumes.
 Use `--keep-data` to preserve your login volumes (so you stay logged in if you reinstall).
 
+### Upgrade
+
+```sh
+aico upgrade
+```
+
+Downloads and replaces the binary with the latest release from GitHub.
+The agent image rebuilds automatically on the next run if the Dockerfile changed.
+
 ### With `go install`
 
 If you have Go 1.26+:
