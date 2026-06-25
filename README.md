@@ -119,6 +119,13 @@ aico run <agent> [path] [flags]
 - `<agent>` — one of `pi`, `opencode`, `copilot-cli`, `codex`, `claude`
 - `[path]` — project folder to mount (defaults to the current directory)
 
+### Checking the version
+
+```sh
+aico --version     # one line, e.g. "aico v0.1.2"
+aico version       # detailed: version, commit, build date, Go, os/arch
+```
+
 ### Flags
 
 | Flag | Description |

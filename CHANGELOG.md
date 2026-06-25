@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-25
+
+### Added
+
+- `aico version` and `aico --version` report the version, commit, and build
+  date. Release builds embed these via ldflags; `go install`ed builds fall back
+  to the module version from the Go build info.
+
 ## [0.1.1] - 2026-06-24
 
 ### Fixed
@@ -33,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--new`, `--image`, `--runtime`, `--verbose`, and `--dry-run` flags.
 - GoReleaser configuration and GitHub Actions release pipeline for six targets.
 
-[Unreleased]: https://github.com/yldgio/aico/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/yldgio/aico/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/yldgio/aico/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/yldgio/aico/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yldgio/aico/releases/tag/v0.1.0
