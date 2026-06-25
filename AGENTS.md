@@ -100,6 +100,11 @@ Before opening a PR, all of the following must pass:
 3. `go test ./...` passes.
 4. The cross-compile loop above succeeds for all six targets.
 5. `./aico run <agent> --dry-run` still prints a sensible plan.
+6. **Smoke test the actual Docker command** — run
+   `docker run <image> <exact-command-from-dry-run> --version` to verify the
+   full ENTRYPOINT + CMD composition works. Unit tests that check parts in
+   isolation miss environment interactions (e.g., the Node image prepending
+   `node` when `command -v` fails on a relative path).
 
 ## Things not to do
 
