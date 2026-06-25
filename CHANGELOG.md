@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-24
+
 ### Fixed
 
 - Windows: mount the project folder at `/workspace` inside the container instead
@@ -31,5 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--new`, `--image`, `--runtime`, `--verbose`, and `--dry-run` flags.
 - GoReleaser configuration and GitHub Actions release pipeline for six targets.
 
-[Unreleased]: https://github.com/yldgio/aico/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yldgio/aico/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/yldgio/aico/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yldgio/aico/releases/tag/v0.1.0
