@@ -1,6 +1,12 @@
 // Package auth builds the container mount and environment arguments needed to
-// forward host credentials into an agent container. File-based credentials are
-// mounted read-only; API-key credentials are forwarded as environment values.
+// preserve an agent's login across sessions.
+//
+// Login is persisted in a per-agent global named volume (aico-auth-<agent>):
+// the user logs in once inside the container and stays logged in for every
+// future run. Nothing from the host is read by default. API-key credentials are
+// forwarded by environment-variable name (never as a value, so the secret never
+// appears in the runtime's argv). Host config directories are bind-mounted
+// read-only only when the caller opts in with shareConfig.
 package auth
 
 import (
@@ -13,14 +19,14 @@ import (
 )
 
 // Plan is the resolved set of runtime arguments for forwarding auth, plus any
-// human-readable warnings (e.g. credentials not found on the host).
+// human-readable warnings (e.g. a shared config directory not found on the host).
 type Plan struct {
-	Args     []string // runtime args: -v ...:...:ro and -e NAME=value pairs
-	Warnings []string // notes about skipped/missing credentials
+	Args     []string // runtime args: -v name:target, -e NAME, -v host:target:ro
+	Warnings []string // notes about skipped/missing shared config
 }
 
-// hostPath resolves an AuthSource to an absolute host path.
-func hostPath(s agents.AuthSource) string {
+// configHostPath resolves a ConfigSource to an absolute host path.
+func configHostPath(s agents.ConfigSource) string {
 	switch s.Base {
 	case agents.BaseConfig:
 		return filepath.Join(platform.ConfigDir(), s.Rel)
@@ -29,27 +35,42 @@ func hostPath(s agents.AuthSource) string {
 	}
 }
 
-// Build computes the auth-forwarding Plan for an agent. Missing file-based
-// credentials are skipped silently (recorded as warnings); unset env vars are
-// skipped without warning since they may legitimately be provided another way.
-func Build(a agents.Agent) Plan {
+// Build computes the auth-forwarding Plan for an agent.
+//
+// Always: one persistent login volume per AuthVolume, and each set EnvVar
+// forwarded by name. When shareConfig is true, each ConfigMount whose host
+// directory exists is additionally bind-mounted read-only; missing ones are
+// skipped and recorded as warnings.
+func Build(a agents.Agent, shareConfig bool) Plan {
 	var p Plan
-	for _, src := range a.FileAuth {
-		host := hostPath(src)
-		if _, err := os.Stat(host); err != nil {
-			p.Warnings = append(p.Warnings,
-				fmt.Sprintf("auth not found for %s: %s (agent may fail to authenticate)", a.Name, host))
-			continue
-		}
-		p.Args = append(p.Args, "-v", fmt.Sprintf("%s:%s:ro", host, src.Container))
+
+	// Persistent, global per-agent login volumes. Docker auto-creates the named
+	// volume on first use, so no host lookup is needed.
+	for _, v := range a.AuthVolumes {
+		p.Args = append(p.Args, "-v", fmt.Sprintf("%s:%s", agents.VolumeName(a.Name, v), v.Target))
 	}
+
+	// API-key env vars: pass by name only (no "=value"). The runtime inherits
+	// the value from aico's environment, so the secret never appears in the
+	// runtime's argv (where `ps` / /proc/<pid>/cmdline could leak it).
 	for _, name := range a.EnvVars {
 		if _, ok := os.LookupEnv(name); ok {
-			// Pass the variable by name only (no "=value"). The runtime inherits
-			// the value from aico's environment, so the secret never appears in
-			// the runtime's argv (where `ps` / /proc/<pid>/cmdline could leak it).
 			p.Args = append(p.Args, "-e", name)
 		}
 	}
+
+	// Opt-in host config sharing, read-only.
+	if shareConfig {
+		for _, src := range a.ConfigMounts {
+			host := configHostPath(src)
+			if _, err := os.Stat(host); err != nil {
+				p.Warnings = append(p.Warnings,
+					fmt.Sprintf("--share-config: host config not found for %s: %s (skipped)", a.Name, host))
+				continue
+			}
+			p.Args = append(p.Args, "-v", fmt.Sprintf("%s:%s:ro", host, src.Target))
+		}
+	}
+
 	return p
 }

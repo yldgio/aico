@@ -21,6 +21,7 @@ type runOpts struct {
 	runtime      string
 	verbose      bool
 	dryRun       bool
+	shareConfig  bool
 }
 
 func newRunCmd() *cobra.Command {
@@ -46,8 +47,9 @@ func newRunCmd() *cobra.Command {
 	f.BoolVar(&o.newContainer, "new", false, "discard any existing container and create a fresh one")
 	f.StringVar(&o.image, "image", "", "use a custom image instead of the built-in agent image")
 	f.StringVar(&o.runtime, "runtime", "", "container runtime to use (default: auto-detect docker, then podman)")
-	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when host credentials are missing")
+	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when a shared config dir is missing")
 	f.BoolVar(&o.dryRun, "dry-run", false, "print what would run without creating a container")
+	f.BoolVar(&o.shareConfig, "share-config", false, "also mount the host config dir read-only (off by default; login itself persists in a volume)")
 	return c
 }
 
@@ -68,7 +70,7 @@ func runAgent(agentName, path string, o *runOpts) error {
 		image = images.DefaultTag
 	}
 	name := container.Name(agent.Name, absPath)
-	authPlan := auth.Build(agent)
+	authPlan := auth.Build(agent, o.shareConfig)
 
 	if o.verbose {
 		for _, w := range authPlan.Warnings {
