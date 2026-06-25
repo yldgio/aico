@@ -41,7 +41,7 @@ func uninstall(keepData bool) error {
 		if !keepData {
 			cleanupVolumes(rtBin)
 		} else {
-			fmt.Println("  keeping auth volumes (--keep-data)")
+			fmt.Fprintln(os.Stderr, "  keeping auth volumes (--keep-data)")
 		}
 	}
 
@@ -50,7 +50,7 @@ func uninstall(keepData bool) error {
 }
 
 func cleanupContainers(rtBin string) {
-	fmt.Println("› removing aico containers...")
+	fmt.Fprintln(os.Stderr, "› removing aico containers...")
 	for _, name := range agents.Names() {
 		// List all containers matching the aico-<agent>- prefix.
 		out, err := exec.Command(rtBin, "ps", "-a", "--filter", "name=aico-"+name+"-", "--format", "{{.Names}}").Output()
@@ -63,22 +63,22 @@ func cleanupContainers(rtBin string) {
 				continue
 			}
 			_ = exec.Command(rtBin, "rm", "-f", cn).Run()
-			fmt.Printf("  removed container %s\n", cn)
+			fmt.Fprintf(os.Stderr, "  removed container %s\n", cn)
 		}
 	}
 }
 
 func cleanupImage(rtBin string) {
-	fmt.Println("› removing agent image...")
+	fmt.Fprintln(os.Stderr, "› removing agent image...")
 	if err := exec.Command(rtBin, "rmi", "-f", images.DefaultTag).Run(); err != nil {
-		fmt.Println("  image not found or already removed")
+		fmt.Fprintln(os.Stderr, "  image not found or already removed")
 	} else {
-		fmt.Printf("  removed %s\n", images.DefaultTag)
+		fmt.Fprintf(os.Stderr, "  removed %s\n", images.DefaultTag)
 	}
 }
 
 func cleanupVolumes(rtBin string) {
-	fmt.Println("› removing auth volumes...")
+	fmt.Fprintln(os.Stderr, "› removing auth volumes...")
 	out, err := exec.Command(rtBin, "volume", "ls", "--format", "{{.Name}}").Output()
 	if err != nil {
 		return
@@ -89,33 +89,33 @@ func cleanupVolumes(rtBin string) {
 			continue
 		}
 		_ = exec.Command(rtBin, "volume", "rm", "-f", vol).Run()
-		fmt.Printf("  removed volume %s\n", vol)
+		fmt.Fprintf(os.Stderr, "  removed volume %s\n", vol)
 	}
 }
 
 func removeBinary() {
 	self, err := os.Executable()
 	if err != nil {
-		fmt.Println("› could not determine binary path; remove it manually")
+		fmt.Fprintln(os.Stderr, "› could not determine binary path; remove it manually")
 		return
 	}
 
 	if runtime.GOOS == "windows" {
 		// Windows locks the running binary — can't self-delete.
-		fmt.Println("")
-		fmt.Println("✓ cleanup complete. To finish, delete the binary:")
-		fmt.Printf("  del \"%s\"\n", self)
-		fmt.Println("")
-		fmt.Println("  If .local\\bin is empty, you can also remove it from your PATH:")
-		fmt.Println("  (Settings → System → About → Advanced → Environment Variables → Path)")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "✓ cleanup complete. To finish, delete the binary:")
+		fmt.Fprintf(os.Stderr, "  del \"%s\"\n", self)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  If .local\\bin is empty, you can also remove it from your PATH:")
+		fmt.Fprintln(os.Stderr, "  (Settings → System → About → Advanced → Environment Variables → Path)")
 	} else {
-		fmt.Printf("› removing %s...\n", self)
+		fmt.Fprintf(os.Stderr, "› removing %s...\n", self)
 		if err := os.Remove(self); err != nil {
-			fmt.Printf("  could not remove: %v\n", err)
-			fmt.Printf("  try: sudo rm %s\n", self)
+			fmt.Fprintf(os.Stderr, "  could not remove: %v\n", err)
+			fmt.Fprintf(os.Stderr, "  try: sudo rm %s\n", self)
 		} else {
-			fmt.Println("")
-			fmt.Printf("✓ aico uninstalled.\n")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintf(os.Stderr, "✓ aico uninstalled.\n")
 		}
 	}
 }

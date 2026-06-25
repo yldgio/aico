@@ -209,6 +209,32 @@ aico exec pi                      # open a shell alongside the agent
 aico run pi -- -p "fix the tests" # forward args after --
 ```
 
+### Scripting & automation
+
+`aico` auto-detects when stdin is not a terminal and runs non-interactively
+(no TTY allocated). Output streams directly to stdout/stderr for piping and
+capture. Exit codes pass through from the agent (125 = aico infrastructure error).
+
+```sh
+# Capture agent output to a file
+aico run pi ~/proj -d -- -p "explain the auth module" > docs/auth.md
+
+# Pipe input to the agent
+echo "fix the failing tests" | aico run pi ~/proj -d -- -p -
+
+# Check exit code in a script
+aico run codex ~/proj -d -- "update dependencies"
+if [ $? -ne 0 ]; then echo "agent failed"; fi
+
+# Parallel execution on multiple repos
+aico run pi repo1 -d -- -p "lint fix" &
+aico run codex repo2 -d -- "update deps" &
+wait
+
+# Cron job
+0 3 * * * aico run pi /srv/api -d -- -p "daily maintenance" >> /var/log/aico.log 2>&1
+```
+
 ### `aico exec` — shell into a running container
 
 ```sh

@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -28,9 +29,19 @@ func newRootCmd(bi BuildInfo) *cobra.Command {
 }
 
 // Execute runs the aico CLI, exiting non-zero on error.
+// Agent/container exit codes pass through; aico infrastructure errors exit 125.
 func Execute(bi BuildInfo) {
 	if err := newRootCmd(bi).Execute(); err != nil {
+		var ee *ExitError
+		if errors.As(err, &ee) {
+			os.Exit(ee.Code)
+		}
+		// Container process exited non-zero: pass through the exit code.
+		if code := exitCode(err); code > 0 {
+			os.Exit(code)
+		}
+		// aico infrastructure error.
 		fmt.Fprintln(os.Stderr, "aico: "+err.Error())
-		os.Exit(1)
+		os.Exit(125)
 	}
 }

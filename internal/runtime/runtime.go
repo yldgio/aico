@@ -127,9 +127,15 @@ func (r *Runtime) StartBackground(name string) error {
 // Attach attaches to an already-running container.
 func (r *Runtime) Attach(name string) error { return r.Run("attach", name) }
 
-// Exec runs a command interactively inside a running container.
-func (r *Runtime) Exec(name string, cmd ...string) error {
-	args := append([]string{"exec", "-it", name}, cmd...)
+// Exec runs a command inside a running container.
+// When tty is true, -it is used (interactive terminal); when false, only -i
+// (stdin open, no pseudo-TTY — suitable for non-interactive/scripted use).
+func (r *Runtime) Exec(name string, tty bool, cmd ...string) error {
+	flag := "-i"
+	if tty {
+		flag = "-it"
+	}
+	args := append([]string{"exec", flag, name}, cmd...)
 	return r.Run(args...)
 }
 

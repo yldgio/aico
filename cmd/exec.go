@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/yldgio/aico/internal/agents"
@@ -56,8 +57,8 @@ func execShell(agentName, path string, o *execOpts) error {
 		if rtBin == "" {
 			rtBin = "(none detected)"
 		}
-		fmt.Printf("[dry-run] container: %s\n", name)
-		fmt.Printf("[dry-run] command:   %s exec -it %s bash\n", rtBin, name)
+		fmt.Fprintf(os.Stderr, "[dry-run] container: %s\n", name)
+		fmt.Fprintf(os.Stderr, "[dry-run] command:   %s exec -it %s bash\n", rtBin, name)
 		return nil
 	}
 
@@ -70,5 +71,5 @@ func execShell(agentName, path string, o *execOpts) error {
 		return fmt.Errorf("container %s is not running\n\nfix: start it first with `aico run %s -d`, then use `aico exec`", name, agentName)
 	}
 
-	return rt.Exec(name, "bash")
+	return rt.Exec(name, isTTY(), "bash")
 }

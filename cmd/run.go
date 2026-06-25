@@ -94,13 +94,19 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	agentCmd := append([]string{}, agent.Command...)
 	agentCmd = append(agentCmd, extraArgs...)
 
+	// Determine Docker TTY flags based on whether stdin is a terminal.
+	interactiveFlag := "-i"
+	if isTTY() {
+		interactiveFlag = "-it"
+	}
+
 	// Common volume/workdir args shared by both -d and non-d creation.
 	commonArgs := []string{"--name", name,
 		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
 	commonArgs = append(commonArgs, authPlan.Args...)
 
 	if o.dryRun {
-		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach)
+		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach, interactiveFlag)
 		return nil
 	}
 
@@ -118,7 +124,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		if rt.Running(name) {
 			if isDetached(rt, name) {
 				// -d container (CMD=sleep infinity): exec agent into it.
-				return rt.Exec(name, agentCmd...)
+				return rt.Exec(name, isTTY(), agentCmd...)
 			}
 			// Non-d container: re-attach to the running process.
 			return rt.Attach(name)
@@ -129,7 +135,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 			if err := rt.StartBackground(name); err != nil {
 				return fmt.Errorf("start container: %w", err)
 			}
-			return rt.Exec(name, agentCmd...)
+			return rt.Exec(name, isTTY(), agentCmd...)
 		}
 		// Non-d container: interactive start (original behavior).
 		return rt.Start(name)
@@ -149,11 +155,11 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		if _, err := rt.Output(createArgs...); err != nil {
 			return fmt.Errorf("create detached container: %w", err)
 		}
-		return rt.Exec(name, agentCmd...)
+		return rt.Exec(name, isTTY(), agentCmd...)
 	}
 
 	// Non-d: single interactive run (current behavior).
-	createArgs := append([]string{"run", "-it"}, commonArgs...)
+	createArgs := append([]string{"run", interactiveFlag}, commonArgs...)
 	createArgs = append(createArgs, image)
 	createArgs = append(createArgs, agentCmd...)
 	return rt.Run(createArgs...)
@@ -186,24 +192,28 @@ func resolvePath(path string) (string, error) {
 	return abs, nil
 }
 
-func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool) {
+func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool, interactiveFlag string) {
 	if rtBin == "" {
 		rtBin = "(none detected — install docker or podman)"
 	}
-	fmt.Printf("[dry-run] runtime:   %s\n", rtBin)
-	fmt.Printf("[dry-run] image:     %s\n", image)
-	fmt.Printf("[dry-run] container: %s\n", name)
-	fmt.Printf("[dry-run] workspace: %s\n", workdir)
+	fmt.Fprintf(os.Stderr, "[dry-run] runtime:   %s\n", rtBin)
+	fmt.Fprintf(os.Stderr, "[dry-run] image:     %s\n", image)
+	fmt.Fprintf(os.Stderr, "[dry-run] container: %s\n", name)
+	fmt.Fprintf(os.Stderr, "[dry-run] workspace: %s\n", workdir)
 	if detach {
 		createArgs := append([]string{"run", "-d"}, commonArgs...)
 		createArgs = append(createArgs, image, "sleep", "infinity")
-		fmt.Printf("[dry-run] create:    %s %s\n", rtBin, strings.Join(createArgs, " "))
-		execArgs := append([]string{"exec", "-it", name}, agentCmd...)
-		fmt.Printf("[dry-run] exec:      %s %s\n", rtBin, strings.Join(execArgs, " "))
+		fmt.Fprintf(os.Stderr, "[dry-run] create:    %s %s\n", rtBin, strings.Join(createArgs, " "))
+		execFlag := "-i"
+		if isTTY() {
+			execFlag = "-it"
+		}
+		execArgs := append([]string{"exec", execFlag, name}, agentCmd...)
+		fmt.Fprintf(os.Stderr, "[dry-run] exec:      %s %s\n", rtBin, strings.Join(execArgs, " "))
 	} else {
-		createArgs := append([]string{"run", "-it"}, commonArgs...)
+		createArgs := append([]string{"run", interactiveFlag}, commonArgs...)
 		createArgs = append(createArgs, image)
 		createArgs = append(createArgs, agentCmd...)
-		fmt.Printf("[dry-run] command:   %s %s\n", rtBin, strings.Join(createArgs, " "))
+		fmt.Fprintf(os.Stderr, "[dry-run] command:   %s %s\n", rtBin, strings.Join(createArgs, " "))
 	}
 }

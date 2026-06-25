@@ -29,7 +29,7 @@ func newUpgradeCmd(bi BuildInfo) *cobra.Command {
 }
 
 func upgrade(bi BuildInfo) error {
-	fmt.Println("› checking latest release...")
+	fmt.Fprintln(os.Stderr, "› checking latest release...")
 
 	tag, err := latestTag()
 	if err != nil {
@@ -40,10 +40,10 @@ func upgrade(bi BuildInfo) error {
 	latest := strings.TrimPrefix(tag, "v")
 
 	if current == latest {
-		fmt.Printf("✓ already up to date (%s)\n", tag)
+		fmt.Fprintf(os.Stderr, "✓ already up to date (%s)\n", tag)
 		return nil
 	}
-	fmt.Printf("  current: %s → latest: %s\n", current, tag)
+	fmt.Fprintf(os.Stderr, "  current: %s → latest: %s\n", current, tag)
 
 	self, err := os.Executable()
 	if err != nil {
@@ -65,7 +65,7 @@ func upgrade(bi BuildInfo) error {
 	archive := fmt.Sprintf("aico_%s_%s_%s.%s", version, goos, arch, ext)
 	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, tag, archive)
 
-	fmt.Printf("› downloading %s...\n", archive)
+	fmt.Fprintf(os.Stderr, "› downloading %s...\n", archive)
 
 	tmpDir, err := os.MkdirTemp("", "aico-upgrade-*")
 	if err != nil {
@@ -78,7 +78,7 @@ func upgrade(bi BuildInfo) error {
 		return fmt.Errorf("download: %w", err)
 	}
 
-	fmt.Println("› extracting...")
+	fmt.Fprintln(os.Stderr, "› extracting...")
 	binName := "aico"
 	if goos == "windows" {
 		binName = "aico.exe"
@@ -101,13 +101,13 @@ func upgrade(bi BuildInfo) error {
 
 	// Replace the current binary. On Windows the running binary is locked,
 	// so we rename-then-move instead of overwriting in place.
-	fmt.Printf("› replacing %s...\n", self)
+	fmt.Fprintf(os.Stderr, "› replacing %s...\n", self)
 	if err := replaceBinary(self, newBin); err != nil {
 		return fmt.Errorf("replace binary: %w\n\nfix: try running with elevated permissions, or download manually from\n  https://github.com/%s/releases/latest", err, githubRepo)
 	}
 
-	fmt.Printf("\n✓ upgraded to %s\n", tag)
-	fmt.Println("  the agent image will rebuild automatically on next run if needed.")
+	fmt.Fprintf(os.Stderr, "\n✓ upgraded to %s\n", tag)
+	fmt.Fprintln(os.Stderr, "  the agent image will rebuild automatically on next run if needed.")
 	return nil
 }
 
