@@ -22,29 +22,39 @@ type runOpts struct {
 	verbose      bool
 	dryRun       bool
 	shareConfig  bool
+	detach       bool
 }
 
 func newRunCmd() *cobra.Command {
 	o := &runOpts{}
 	c := &cobra.Command{
-		Use:   "run <agent> [path]",
+		Use:   "run <agent> [path] [-- agent-args...]",
 		Short: "Run or resume an agent container for a project folder",
 		Long: "Run or resume an agent container for a project folder.\n\n" +
 			"<agent> is one of: pi, opencode, copilot-cli, codex, claude\n" +
-			"[path]  is the project folder to mount (defaults to the current directory).\n\n" +
+			"[path]  is the project folder to mount (defaults to the current directory).\n" +
+			"[-- args] are forwarded to the agent command.\n\n" +
 			"On first use a container is created; subsequent runs on the same path\n" +
-			"resume it. Use --new to discard and recreate it.",
-		Args: cobra.RangeArgs(1, 2),
+			"resume it. Use --new to discard and recreate it.\n\n" +
+			"With -d the container stays running after the agent exits, so you\n" +
+			"can re-attach later or open a shell with `aico exec`.",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
-			if len(args) == 2 {
+			if len(args) >= 2 {
 				path = args[1]
 			}
-			return runAgent(args[0], path, o)
+			agentArgs := cmd.ArgsLenAtDash()
+			var extra []string
+			if agentArgs >= 0 {
+				extra = args[agentArgs:]
+			}
+			return runAgent(args[0], path, extra, o)
 		},
 	}
 	f := c.Flags()
 	f.BoolVar(&o.newContainer, "new", false, "discard any existing container and create a fresh one")
+	f.BoolVarP(&o.detach, "detach", "d", false, "keep the container running after the agent exits")
 	f.StringVar(&o.image, "image", "", "use a custom image instead of the built-in agent image")
 	f.StringVar(&o.runtime, "runtime", "", "container runtime to use (default: auto-detect docker, then podman)")
 	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when a shared config dir is missing")
@@ -53,7 +63,7 @@ func newRunCmd() *cobra.Command {
 	return c
 }
 
-func runAgent(agentName, path string, o *runOpts) error {
+func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	agent, err := agents.Lookup(agentName)
 	if err != nil {
 		return err
@@ -78,20 +88,19 @@ func runAgent(agentName, path string, o *runOpts) error {
 		}
 	}
 
-	// Resolve the workspace bind mount. On Unix the container path equals the
-	// host path; on Windows the host path is mapped to a POSIX directory because
-	// a Windows path is not a valid Linux working directory.
 	mountSrc, workdir := platform.WorkspaceMount(absPath)
 
-	// Assemble the create command (used for a fresh container).
-	createArgs := []string{"run", "-it", "--name", name,
+	// Build the agent command (agent binary + any trailing args).
+	agentCmd := append([]string{}, agent.Command...)
+	agentCmd = append(agentCmd, extraArgs...)
+
+	// Common volume/workdir args shared by both -d and non-d creation.
+	commonArgs := []string{"--name", name,
 		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
-	createArgs = append(createArgs, authPlan.Args...)
-	createArgs = append(createArgs, image)
-	createArgs = append(createArgs, agent.Command...)
+	commonArgs = append(commonArgs, authPlan.Args...)
 
 	if o.dryRun {
-		printDryRun(rtBin, image, name, workdir, createArgs)
+		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach)
 		return nil
 	}
 
@@ -107,19 +116,54 @@ func runAgent(agentName, path string, o *runOpts) error {
 	// Resume path: an existing container is reused unless --new was given.
 	if !o.newContainer && rt.Exists(name) {
 		if rt.Running(name) {
+			if isDetached(rt, name) {
+				// -d container (CMD=sleep infinity): exec agent into it.
+				return rt.Exec(name, agentCmd...)
+			}
+			// Non-d container: re-attach to the running process.
 			return rt.Attach(name)
 		}
+		// Container is stopped.
+		if isDetached(rt, name) {
+			// Was started with -d: restart in background, then exec agent.
+			if err := rt.StartBackground(name); err != nil {
+				return fmt.Errorf("start container: %w", err)
+			}
+			return rt.Exec(name, agentCmd...)
+		}
+		// Non-d container: interactive start (original behavior).
 		return rt.Start(name)
 	}
 
-	// Fresh container: ensure the image exists (unless the user supplied one),
-	// then create + start + attach in a single interactive run.
+	// Fresh container: ensure the image exists (unless the user supplied one).
 	if o.image == "" {
 		if err := images.EnsureBuilt(rt); err != nil {
 			return err
 		}
 	}
+
+	if o.detach {
+		// Create with sleep infinity as the main process, then exec agent.
+		createArgs := append([]string{"run", "-d"}, commonArgs...)
+		createArgs = append(createArgs, image, "sleep", "infinity")
+		if _, err := rt.Output(createArgs...); err != nil {
+			return fmt.Errorf("create detached container: %w", err)
+		}
+		return rt.Exec(name, agentCmd...)
+	}
+
+	// Non-d: single interactive run (current behavior).
+	createArgs := append([]string{"run", "-it"}, commonArgs...)
+	createArgs = append(createArgs, image)
+	createArgs = append(createArgs, agentCmd...)
 	return rt.Run(createArgs...)
+}
+
+// isDetached reports whether a container was created in detach mode.
+// It checks if the container's command is exactly "sleep infinity", which
+// identifies containers created with -d.
+func isDetached(rt *runtime.Runtime, name string) bool {
+	return rt.ContainerCommand(name) == "sleep infinity"
 }
 
 // resolvePath converts an optional user path (default: cwd) into a cleaned
@@ -142,13 +186,24 @@ func resolvePath(path string) (string, error) {
 	return abs, nil
 }
 
-func printDryRun(rtBin, image, name, absPath string, createArgs []string) {
+func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool) {
 	if rtBin == "" {
 		rtBin = "(none detected — install docker or podman)"
 	}
 	fmt.Printf("[dry-run] runtime:   %s\n", rtBin)
 	fmt.Printf("[dry-run] image:     %s\n", image)
 	fmt.Printf("[dry-run] container: %s\n", name)
-	fmt.Printf("[dry-run] workspace: %s\n", absPath)
-	fmt.Printf("[dry-run] command:   %s %s\n", rtBin, strings.Join(createArgs, " "))
+	fmt.Printf("[dry-run] workspace: %s\n", workdir)
+	if detach {
+		createArgs := append([]string{"run", "-d"}, commonArgs...)
+		createArgs = append(createArgs, image, "sleep", "infinity")
+		fmt.Printf("[dry-run] create:    %s %s\n", rtBin, strings.Join(createArgs, " "))
+		execArgs := append([]string{"exec", "-it", name}, agentCmd...)
+		fmt.Printf("[dry-run] exec:      %s %s\n", rtBin, strings.Join(execArgs, " "))
+	} else {
+		createArgs := append([]string{"run", "-it"}, commonArgs...)
+		createArgs = append(createArgs, image)
+		createArgs = append(createArgs, agentCmd...)
+		fmt.Printf("[dry-run] command:   %s %s\n", rtBin, strings.Join(createArgs, " "))
+	}
 }

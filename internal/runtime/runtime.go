@@ -118,8 +118,29 @@ func (r *Runtime) ImageLabel(tag, label string) (string, error) {
 // Start starts an existing stopped container and attaches to it interactively.
 func (r *Runtime) Start(name string) error { return r.Run("start", "-ai", name) }
 
+// StartBackground starts a stopped container in the background (no attach).
+func (r *Runtime) StartBackground(name string) error {
+	_, err := r.Output("start", name)
+	return err
+}
+
 // Attach attaches to an already-running container.
 func (r *Runtime) Attach(name string) error { return r.Run("attach", name) }
+
+// Exec runs a command interactively inside a running container.
+func (r *Runtime) Exec(name string, cmd ...string) error {
+	args := append([]string{"exec", "-it", name}, cmd...)
+	return r.Run(args...)
+}
+
+// ContainerCommand returns the original command a container was created with.
+func (r *Runtime) ContainerCommand(name string) string {
+	out, err := r.Inspect(name, "{{join .Config.Cmd \" \"}}")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
 
 // Stop stops a running container.
 func (r *Runtime) Stop(name string) error { return r.Run("stop", name) }
