@@ -82,7 +82,7 @@ var registry = map[string]Agent{
 	},
 	"copilot-cli": {
 		Name:    "copilot-cli",
-		Command: []string{"copilot-entrypoint.sh"},
+		Command: []string{"/usr/local/bin/copilot-entrypoint.sh"},
 		AuthVolumes: []AuthVolume{
 			{Target: "/root/.copilot"},
 			{Suffix: "gh", Target: "/root/.config/gh"},
