@@ -98,7 +98,7 @@ your host settings never leak into the container.
 | `opencode` | volume `aico-auth-opencode` → `/root/.local/share/opencode` + `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` if set |
 | `codex` | volume `aico-auth-codex` → `/root/.codex` + `OPENAI_API_KEY` if set |
 | `claude` | volume `aico-auth-claude` → `/root/.claude` + `ANTHROPIC_API_KEY` if set |
-| `copilot-cli` | *not persisted yet* — see below |
+| `copilot-cli` | volumes `aico-auth-copilot-cli` → `/root/.copilot`, `…-gh` → `/root/.config/gh`, `…-keyring` → `/root/.local/share/keyrings` (token stored via gnome-keyring/libsecret) |
 
 **API keys** are forwarded **by name only** (`-e KEY`, never `-e KEY=VALUE`), so the
 value never appears in the runtime's argument list. Set the variable in your shell and
@@ -108,14 +108,6 @@ value never appears in the runtime's argument list. Set the variable in your she
 your host config directory **read-only** (currently `opencode`'s `~/.config/opencode`;
 for agents that keep config and login in one directory, configure once inside instead).
 `aico` never writes to your host config.
-
-> **copilot-cli login is not persisted yet (planned for v2).** The Copilot CLI stores
-> its token in the system keyring (libsecret), not a file, so persisting it needs the
-> keyring running headlessly in the image. Until then you re-run `/login` per container;
-> `aico` deliberately does **not** save a clear-text token to a volume.
-
-On Windows native, the equivalent host locations under `%USERPROFILE%` and `%APPDATA%`
-are used automatically for `--share-config`.
 
 Examples:
 

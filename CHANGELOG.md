@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **copilot-cli login now persists across sessions.** The image includes
+  gnome-keyring + dbus running headlessly; copilot's OAuth token is stored via
+  libsecret in a per-agent named volume (`aico-auth-copilot-cli-keyring`), with
+  `~/.copilot` and `~/.config/gh` in their own volumes. Log in once inside the
+  container and stay logged in.
+
 ## [0.2.0] - 2026-06-25
 
 ### Changed

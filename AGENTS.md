@@ -43,8 +43,9 @@ These are deliberate decisions. Do not violate them without updating the spec.
    user logs in once inside the container and stays logged in. Nothing from the
    host is read by default. API keys are forwarded **by name only** (`-e KEY`,
    never `-e KEY=VALUE`) so secrets never appear in `argv`. Host config is shared
-   read-only only with `--share-config`. copilot-cli login persistence is
-   deferred to v2 (its token lives in the keyring, not a file).
+   read-only only with `--share-config`. copilot-cli uses gnome-keyring
+   (libsecret) running headlessly via an entrypoint script; its token is stored
+   in a keyring volume, not a raw file.
 4. **One shared image holds all agents.** The agent to launch is chosen at run
    time; the entrypoint is not baked per-agent.
 5. **Cross-platform path logic lives only in `internal/platform`.** No other
