@@ -52,3 +52,23 @@ func TestHomeDirWindowsUsesUserProfile(t *testing.T) {
 		t.Fatalf("windows home = %q, want C:\\Users\\dev", got)
 	}
 }
+
+func TestWorkspaceMountUnixUsesSamePath(t *testing.T) {
+	src, target := workspaceMountFor("linux", "/home/dev/project")
+	if src != "/home/dev/project" || target != "/home/dev/project" {
+		t.Fatalf("unix mount = (%q,%q), want same host path on both sides", src, target)
+	}
+}
+
+func TestWorkspaceMountWindowsMapsToPosix(t *testing.T) {
+	src, target := workspaceMountFor("windows", `D:\projects\foundry\ag-001`)
+	if src != `D:\projects\foundry\ag-001` {
+		t.Fatalf("windows mount source = %q, want the host path", src)
+	}
+	if target != WinWorkspace {
+		t.Fatalf("windows mount target = %q, want %q (a POSIX path)", target, WinWorkspace)
+	}
+	if target == "" || target[0] != '/' {
+		t.Fatalf("windows container path %q must be an absolute POSIX path", target)
+	}
+}

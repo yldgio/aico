@@ -76,7 +76,7 @@ What happens:
 1. `aico` detects your container runtime (Docker, then Podman).
 2. It computes a deterministic container name from the agent + folder path (`aico-pi-<hash>`).
 3. If a container for that agent+folder already exists, it **resumes** it. Otherwise it **creates** one.
-4. Your folder is mounted at the same path inside the container and set as the working directory.
+4. Your folder is mounted into the container and set as the working directory. On Linux/macOS it is mounted at the same path it has on the host; on Windows it is mounted at `/workspace` (a Windows path like `D:\proj` is not a valid Linux directory).
 5. Your host credentials for that agent are mounted read-only (or forwarded as env vars).
 6. You land directly in the agent.
 

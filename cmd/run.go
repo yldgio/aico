@@ -11,6 +11,7 @@ import (
 	"github.com/yldgio/aico/internal/agents"
 	"github.com/yldgio/aico/internal/auth"
 	"github.com/yldgio/aico/internal/container"
+	"github.com/yldgio/aico/internal/platform"
 	"github.com/yldgio/aico/internal/runtime"
 )
 
@@ -75,15 +76,20 @@ func runAgent(agentName, path string, o *runOpts) error {
 		}
 	}
 
+	// Resolve the workspace bind mount. On Unix the container path equals the
+	// host path; on Windows the host path is mapped to a POSIX directory because
+	// a Windows path is not a valid Linux working directory.
+	mountSrc, workdir := platform.WorkspaceMount(absPath)
+
 	// Assemble the create command (used for a fresh container).
 	createArgs := []string{"run", "-it", "--name", name,
-		"-v", fmt.Sprintf("%s:%s", absPath, absPath), "-w", absPath}
+		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
 	createArgs = append(createArgs, authPlan.Args...)
 	createArgs = append(createArgs, image)
 	createArgs = append(createArgs, agent.Command...)
 
 	if o.dryRun {
-		printDryRun(rtBin, image, name, absPath, createArgs)
+		printDryRun(rtBin, image, name, workdir, createArgs)
 		return nil
 	}
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: mount the project folder at `/workspace` inside the container instead
+  of reusing the host path, which produced `the working directory 'D:\...' is
+  invalid, it needs to be an absolute path` because a Windows path is not a valid
+  Linux working directory.
+
 ## [0.1.0] - 2026-06-24
 
 ### Added
