@@ -18,6 +18,27 @@ RUN npm install -g \
       @anthropic-ai/claude-code \
     && npm cache clean --force
 
+# Keyring support for copilot-cli: it stores its OAuth token in the system
+# keyring (libsecret), not a file. gnome-keyring + dbus provide a headless
+# secrets service so the token is encrypted at rest inside the container.
+# This layer is separate from the base apt layer so the expensive npm install
+# above stays cached when these packages are added/updated.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      gnome-keyring dbus-x11 libsecret-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pre-seed the gnome-keyring with an empty-password login collection.
+# This auto-unlocks headlessly (no GUI prompter needed).
+RUN mkdir -p /root/.local/share/keyrings \
+    && printf '[keyring]\ndisplay-name=login\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n' \
+       > /root/.local/share/keyrings/login.keyring \
+    && chmod 600 /root/.local/share/keyrings/login.keyring \
+    && echo 'login' > /root/.local/share/keyrings/default
+
+# Entrypoint for copilot-cli: starts dbus + gnome-keyring, then exec's copilot.
+COPY copilot-entrypoint.sh /usr/local/bin/copilot-entrypoint.sh
+RUN chmod +x /usr/local/bin/copilot-entrypoint.sh
+
 WORKDIR /workspace
 
 # No ENTRYPOINT: aico supplies the agent command at `run` time.

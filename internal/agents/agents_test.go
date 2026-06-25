@@ -16,12 +16,6 @@ func TestLookupKnown(t *testing.T) {
 func TestV1AgentsHaveLoginVolumeExceptCopilot(t *testing.T) {
 	for _, n := range Names() {
 		a, _ := Lookup(n)
-		if n == "copilot-cli" {
-			if len(a.AuthVolumes) != 0 {
-				t.Errorf("copilot-cli must have no AuthVolumes in v1, got %v", a.AuthVolumes)
-			}
-			continue
-		}
 		if len(a.AuthVolumes) == 0 {
 			t.Errorf("%s: expected at least one login AuthVolume", n)
 		}
@@ -32,6 +26,29 @@ func TestV1AgentsHaveLoginVolumeExceptCopilot(t *testing.T) {
 			if VolumeName(n, v) != "aico-auth-"+n && v.Suffix == "" {
 				t.Errorf("%s: unexpected volume name %q", n, VolumeName(n, v))
 			}
+		}
+	}
+}
+
+func TestCopilotHasThreeVolumes(t *testing.T) {
+	a, _ := Lookup("copilot-cli")
+	if len(a.AuthVolumes) != 3 {
+		t.Fatalf("copilot-cli: expected 3 AuthVolumes, got %d", len(a.AuthVolumes))
+	}
+	want := map[string]string{
+		"aico-auth-copilot-cli":         "/root/.copilot",
+		"aico-auth-copilot-cli-gh":      "/root/.config/gh",
+		"aico-auth-copilot-cli-keyring": "/root/.local/share/keyrings",
+	}
+	for _, v := range a.AuthVolumes {
+		name := VolumeName("copilot-cli", v)
+		expTarget, ok := want[name]
+		if !ok {
+			t.Errorf("unexpected volume %q -> %q", name, v.Target)
+			continue
+		}
+		if v.Target != expTarget {
+			t.Errorf("%s: target = %q, want %q", name, v.Target, expTarget)
 		}
 	}
 }

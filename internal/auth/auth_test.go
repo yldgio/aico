@@ -113,11 +113,16 @@ func TestShareConfigMissingDirWarnsAndSkips(t *testing.T) {
 	}
 }
 
-func TestCopilotHasNoVolumeInV1(t *testing.T) {
+func TestCopilotHasKeyringVolumes(t *testing.T) {
 	p := Build(mustLookup(t, "copilot-cli"), false)
-	for _, a := range p.Args {
-		if strings.HasPrefix(a, "aico-auth-") {
-			t.Errorf("copilot-cli must not persist login in v1 (keyring = v2): %v", p.Args)
+	wantVolumes := []string{
+		"aico-auth-copilot-cli:/root/.copilot",
+		"aico-auth-copilot-cli-gh:/root/.config/gh",
+		"aico-auth-copilot-cli-keyring:/root/.local/share/keyrings",
+	}
+	for _, want := range wantVolumes {
+		if !argsHave(p.Args, "-v", want) {
+			t.Errorf("copilot-cli: missing volume %q in %v", want, p.Args)
 		}
 	}
 }

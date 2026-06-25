@@ -82,8 +82,12 @@ var registry = map[string]Agent{
 	},
 	"copilot-cli": {
 		Name:    "copilot-cli",
-		Command: []string{"copilot"},
-		// No AuthVolumes: login persistence needs the keyring (v2).
+		Command: []string{"copilot-entrypoint.sh"},
+		AuthVolumes: []AuthVolume{
+			{Target: "/root/.copilot"},
+			{Suffix: "gh", Target: "/root/.config/gh"},
+			{Suffix: "keyring", Target: "/root/.local/share/keyrings"},
+		},
 	},
 	"codex": {
 		Name:    "codex",
