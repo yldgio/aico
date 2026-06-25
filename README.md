@@ -141,11 +141,12 @@ aico run opencode --share-config
 ## Usage
 
 ```
-aico run <agent> [path] [flags]
+aico run <agent> [path] [flags] [-- agent-args...]
 ```
 
 - `<agent>` — one of `pi`, `opencode`, `copilot-cli`, `codex`, `claude`
 - `[path]` — project folder to mount (defaults to the current directory)
+- `[-- args]` — everything after `--` is forwarded to the agent command
 
 ### Checking the version
 
@@ -158,6 +159,7 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 
 | Flag | Description |
 |---|---|
+| `-d`, `--detach` | Keep the container running after the agent exits. Re-run `aico run` to re-attach, or `aico exec` to open a shell. |
 | `--new` | Discard any existing container for this agent+folder and create a fresh one. |
 | `--image <tag>` | Use a custom image instead of the built-in agent image. Skips the built-in build entirely. |
 | `--runtime <bin>` | Force a specific container runtime (e.g. `podman`). Overrides auto-detection. |
@@ -179,6 +181,29 @@ aico run claude ~/work/api        # a specific folder
 aico run codex --new              # force a fresh container
 aico run pi --image my/custom:tag # bring your own image
 aico run opencode --dry-run       # see what would happen
+
+# Detach mode: container stays alive after agent exits
+aico run pi -d                    # interactive session, container persists
+aico run pi                       # re-attach to the same container
+aico exec pi                      # open a shell alongside the agent
+
+# Pass args to the agent
+aico run pi -- -p "fix the tests" # forward args after --
+```
+
+### `aico exec` — shell into a running container
+
+```sh
+aico exec <agent> [path]
+```
+
+Opens an interactive bash shell in a running container (started with `-d`).
+Useful for exploring the filesystem, debugging, or running commands alongside
+the agent.
+
+```sh
+aico exec pi                      # shell into the pi container for cwd
+aico exec codex ~/work/api        # shell into a specific project's container
 ```
 
 ---

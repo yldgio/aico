@@ -20,6 +20,7 @@ func newRootCmd(bi BuildInfo) *cobra.Command {
 	// `aico --version` prints exactly the short string (no "aico version " prefix).
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(newRunCmd())
+	root.AddCommand(newExecCmd())
 	root.AddCommand(newVersionCmd(bi))
 	return root
 }
