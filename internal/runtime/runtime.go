@@ -109,6 +109,12 @@ func (r *Runtime) ImageExists(tag string) bool {
 	return err == nil
 }
 
+// ImageLabel returns the value of a label from a local image, or empty string
+// if the image/label doesn't exist.
+func (r *Runtime) ImageLabel(tag, label string) (string, error) {
+	return r.Output("inspect", "--format", fmt.Sprintf("{{index .Config.Labels %q}}", label), tag)
+}
+
 // Start starts an existing stopped container and attaches to it interactively.
 func (r *Runtime) Start(name string) error { return r.Run("start", "-ai", name) }
 
