@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-25
+
 ### Added
 
 - **copilot-cli login now persists across sessions.** The image includes
@@ -34,12 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - opencode's real login (`~/.local/share/opencode/auth.json`) is now preserved;
   the previous `~/.config/opencode` mount never captured it.
-
-### Known limitations
-
-- copilot-cli login is not yet persisted (its token lives in the system keyring,
-  not a file); planned for a follow-up release. aico does not write a clear-text
-  token to a volume.
 
 ## [0.1.2] - 2026-06-25
 
@@ -75,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--new`, `--image`, `--runtime`, `--verbose`, and `--dry-run` flags.
 - GoReleaser configuration and GitHub Actions release pipeline for six targets.
 
-[Unreleased]: https://github.com/yldgio/aico/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yldgio/aico/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/yldgio/aico/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yldgio/aico/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/yldgio/aico/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/yldgio/aico/compare/v0.1.0...v0.1.1
