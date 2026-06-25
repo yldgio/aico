@@ -18,7 +18,7 @@ import (
 	"github.com/yldgio/aico/internal/platform"
 )
 
-// Plan is the resolved set of runtime arguments for forwarding auth, plus any
+// Plan is the resolved set of runtime arguments for agent auth, plus any
 // human-readable warnings (e.g. a shared config directory not found on the host).
 type Plan struct {
 	Args     []string // runtime args: -v name:target, -e NAME, -v host:target:ro
@@ -35,7 +35,7 @@ func configHostPath(s agents.ConfigSource) string {
 	}
 }
 
-// Build computes the auth-forwarding Plan for an agent.
+// Build computes the auth Plan for an agent.
 //
 // Always: one persistent login volume per AuthVolume, and each set EnvVar
 // forwarded by name. When shareConfig is true, each ConfigMount whose host

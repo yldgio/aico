@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/yldgio/aico)](https://goreportcard.com/report/github.com/yldgio/aico)
 
-**One command to launch an AI coding agent in an isolated, pre-authenticated container.**
+**One command to launch an AI coding agent in an isolated container with persistent login.**
 
 `aico` puts your AI coding agent inside a container, mounts your project folder, and keeps you logged in across runs — so the agent is ready to use immediately. Run it again on the same folder and it resumes the same container, state intact.
 

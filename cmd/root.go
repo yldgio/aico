@@ -13,7 +13,7 @@ func newRootCmd(bi BuildInfo) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "aico",
 		Short:         "Launch or resume an isolated container for an AI coding agent",
-		Long:          "aico runs an AI coding agent inside a container, mounting the current\nfolder and forwarding your existing host credentials. Re-running on the\nsame path resumes the same container.",
+		Long:          "aico runs an AI coding agent inside a container, mounting the current\nfolder and keeping your login across sessions. Re-running on the\nsame path resumes the same container.",
 		Version:       bi.short(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
