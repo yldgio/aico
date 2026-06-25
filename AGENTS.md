@@ -6,8 +6,8 @@ file up to date when project structure, commands, or conventions change.
 ## What this project is
 
 `aico` is a single-command CLI that launches or resumes an isolated container
-for an AI coding agent, mounts the current folder, and forwards the host's
-existing credentials. It supports five agents: `pi`, `opencode`, `copilot-cli`,
+for an AI coding agent, mounts the current folder, and keeps your agent login
+persisted across runs. It supports five agents: `pi`, `opencode`, `copilot-cli`,
 `codex`, and `claude`.
 
 The authoritative specification lives in [`specs/aico.md`](specs/aico.md); the
@@ -22,7 +22,7 @@ cmd/                     Cobra CLI. root.go wires commands; run.go orchestrates.
 internal/agents/         Registry of the 5 supported agents + their auth sources.
 internal/runtime/        Vendor-independent wrapper over the container CLI.
 internal/container/      Deterministic container identity (aico-<agent>-<hash>).
-internal/auth/           Builds read-only mounts + env-var forwarding for auth.
+internal/auth/           Builds login volumes + env-var forwarding + opt-in config mounts.
 internal/platform/       OS-specific path resolution (Windows vs Unix).
 images/                  Embedded Dockerfile (all agents) + on-demand build.
 specs/aico.md            The specification. Source of truth.
@@ -38,10 +38,13 @@ These are deliberate decisions. Do not violate them without updating the spec.
    aico must not manage sockets or `DOCKER_HOST` itself.
 2. **Container identity is pure.** `aico-<agent>-<sha256(abspath)[:8]>`. No
    lockfiles, labels, or state written into the user's project.
-3. **Auth is read-only and never created by aico.** File credentials are bind
-   mounted `:ro`; API keys are forwarded **by name only** (`-e KEY`, never
-   `-e KEY=VALUE`) so secrets never appear in `argv`. Missing credentials are
-   skipped silently (warn only with `--verbose`).
+3. **Login persists in a per-agent volume; aico never seeds it from the host.**
+   Each agent's login lives in a global named volume `aico-auth-<agent>`; the
+   user logs in once inside the container and stays logged in. Nothing from the
+   host is read by default. API keys are forwarded **by name only** (`-e KEY`,
+   never `-e KEY=VALUE`) so secrets never appear in `argv`. Host config is shared
+   read-only only with `--share-config`. copilot-cli login persistence is
+   deferred to v2 (its token lives in the keyring, not a file).
 4. **One shared image holds all agents.** The agent to launch is chosen at run
    time; the entrypoint is not baked per-agent.
 5. **Cross-platform path logic lives only in `internal/platform`.** No other

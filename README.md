@@ -6,7 +6,7 @@
 
 **One command to launch an AI coding agent in an isolated, pre-authenticated container.**
 
-`aico` puts your AI coding agent inside a container, mounts your project folder, and forwards the credentials you already have on your host — so the agent is ready to use immediately. Run it again on the same folder and it resumes the same container, state intact.
+`aico` puts your AI coding agent inside a container, mounts your project folder, and keeps you logged in across runs — so the agent is ready to use immediately. Run it again on the same folder and it resumes the same container, state intact.
 
 ```sh
 aico run pi          # launch (or resume) pi in the current folder
@@ -19,7 +19,7 @@ Supported agents: **pi**, **opencode**, **copilot-cli**, **codex**, **claude**.
 
 ## Why
 
-Starting an agent in a clean environment usually means: build an image, mount the right folder, copy in credentials, remember which container was which. `aico` collapses all of that into a single command, and isolates each run in its own container as a side effect.
+Starting an agent in a clean environment usually means: build an image, mount the right folder, log in again, remember which container was which. `aico` collapses all of that into a single command, keeps your login across runs, and isolates each run in its own container as a side effect.
 
 ---
 
@@ -77,7 +77,7 @@ What happens:
 2. It computes a deterministic container name from the agent + folder path (`aico-pi-<hash>`).
 3. If a container for that agent+folder already exists, it **resumes** it. Otherwise it **creates** one.
 4. Your folder is mounted into the container and set as the working directory. On Linux/macOS it is mounted at the same path it has on the host; on Windows it is mounted at `/workspace` (a Windows path like `D:\proj` is not a valid Linux directory).
-5. Your host credentials for that agent are mounted read-only (or forwarded as env vars).
+5. Your login for that agent is preserved across runs in a per-agent volume; API keys you set in your environment are forwarded by name.
 6. You land directly in the agent.
 
 When you exit the agent, the container stops. The next `aico run` on the same folder resumes it with all its state.
@@ -86,17 +86,36 @@ When you exit the agent, the container stops. The next `aico run` on the same fo
 
 ## Authentication
 
-`aico` never creates or asks for credentials — it forwards what you already have. If a credential source is missing it is silently skipped (run with `--verbose` to see what was skipped).
+You log in **once, inside the container**, and stay logged in for every future run.
+`aico` keeps each agent's login in a per-agent **named volume** (`aico-auth-<agent>`)
+that is global across your projects — so logging into `pi` once means every project
+using `pi` is already authenticated. Nothing from your host is read by default, so
+your host settings never leak into the container.
 
-| Agent | What is forwarded |
+| Agent | How login is preserved |
 |---|---|
-| `pi` | `~/.pi/agent/` (read-only mount) |
-| `opencode` | `~/.config/opencode/` (read-only mount) + `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` if set |
-| `copilot-cli` | `~/.copilot/` and `~/.config/gh/` (read-only mounts) |
-| `codex` | `OPENAI_API_KEY` environment variable |
-| `claude` | `ANTHROPIC_API_KEY` environment variable |
+| `pi` | volume `aico-auth-pi` → `/root/.pi/agent` |
+| `opencode` | volume `aico-auth-opencode` → `/root/.local/share/opencode` + `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` if set |
+| `codex` | volume `aico-auth-codex` → `/root/.codex` + `OPENAI_API_KEY` if set |
+| `claude` | volume `aico-auth-claude` → `/root/.claude` + `ANTHROPIC_API_KEY` if set |
+| `copilot-cli` | *not persisted yet* — see below |
 
-On Windows native, the equivalent locations under `%USERPROFILE%` and `%APPDATA%` are used automatically.
+**API keys** are forwarded **by name only** (`-e KEY`, never `-e KEY=VALUE`), so the
+value never appears in the runtime's argument list. Set the variable in your shell and
+`aico` passes it through if present.
+
+**Sharing host config** is opt-in. Pass `--share-config` to additionally bind-mount
+your host config directory **read-only** (currently `opencode`'s `~/.config/opencode`;
+for agents that keep config and login in one directory, configure once inside instead).
+`aico` never writes to your host config.
+
+> **copilot-cli login is not persisted yet (planned for v2).** The Copilot CLI stores
+> its token in the system keyring (libsecret), not a file, so persisting it needs the
+> keyring running headlessly in the image. Until then you re-run `/login` per container;
+> `aico` deliberately does **not** save a clear-text token to a volume.
+
+On Windows native, the equivalent host locations under `%USERPROFILE%` and `%APPDATA%`
+are used automatically for `--share-config`.
 
 Examples:
 
@@ -104,8 +123,11 @@ Examples:
 # codex picks up your key from the environment
 OPENAI_API_KEY=sk-... aico run codex
 
-# pi reuses the login you already did on the host
+# pi: log in once inside the container; every later run stays logged in
 aico run pi
+
+# also bring your host opencode config in, read-only
+aico run opencode --share-config
 ```
 
 ---
@@ -133,8 +155,9 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 | `--new` | Discard any existing container for this agent+folder and create a fresh one. |
 | `--image <tag>` | Use a custom image instead of the built-in agent image. Skips the built-in build entirely. |
 | `--runtime <bin>` | Force a specific container runtime (e.g. `podman`). Overrides auto-detection. |
-| `--verbose` | Print warnings, e.g. when host credentials are not found. |
+| `--verbose` | Print warnings, e.g. when a `--share-config` directory is missing. |
 | `--dry-run` | Print what would run, without creating a container. |
+| `--share-config` | Also mount the host config dir read-only (off by default; login itself always persists in a volume). |
 
 You can also set the runtime via the `AICO_RUNTIME` environment variable:
 

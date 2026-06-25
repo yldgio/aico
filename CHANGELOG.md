@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Auth model reworked to persist login across sessions.** Each agent's login
+  is now kept in a per-agent global named volume (`aico-auth-<agent>`): log in
+  once inside the container and stay logged in for every future run. aico no
+  longer bind-mounts host config folders by default, so host settings never leak
+  into the container.
+
+### Added
+
+- `--share-config` flag: opt in to bind-mounting the host config directory
+  read-only (e.g. opencode's `~/.config/opencode`).
+
+### Fixed
+
+- opencode's real login (`~/.local/share/opencode/auth.json`) is now preserved;
+  the previous `~/.config/opencode` mount never captured it.
+
+### Known limitations
+
+- copilot-cli login is not yet persisted (its token lives in the system keyring,
+  not a file); planned for a follow-up release. aico does not write a clear-text
+  token to a volume.
+
 ## [0.1.2] - 2026-06-25
 
 ### Added
