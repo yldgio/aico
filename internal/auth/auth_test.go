@@ -2,6 +2,7 @@ package auth
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,8 +82,10 @@ func TestBuildOpencodeVolumeTarget(t *testing.T) {
 
 func TestShareConfigAddsReadOnlyMountWhenPresent(t *testing.T) {
 	dir := t.TempDir()
+	// On Windows, ConfigDir() checks APPDATA before XDG_CONFIG_HOME.
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	if err := os.MkdirAll(dir+"/opencode", 0o755); err != nil {
+	t.Setenv("APPDATA", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "opencode"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,14 +97,16 @@ func TestShareConfigAddsReadOnlyMountWhenPresent(t *testing.T) {
 	}
 
 	with := Build(mustLookup(t, "opencode"), true)
-	want := dir + "/opencode:/root/.config/opencode:ro"
+	want := filepath.Join(dir, "opencode") + ":/root/.config/opencode:ro"
 	if !argsHave(with.Args, "-v", want) {
 		t.Errorf("--share-config: expected %q in %v", want, with.Args)
 	}
 }
 
 func TestShareConfigMissingDirWarnsAndSkips(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // empty: opencode/ does not exist
+	empty := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", empty)
+	t.Setenv("APPDATA", empty) // Windows: ConfigDir() checks APPDATA first
 	p := Build(mustLookup(t, "opencode"), true)
 	for _, a := range p.Args {
 		if strings.Contains(a, ":ro") {

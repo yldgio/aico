@@ -12,6 +12,7 @@ package platform
 
 import (
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"runtime"
 )
@@ -58,7 +59,9 @@ func configDirFor(goos string, env envFunc, home string) string {
 	if v, ok := env("XDG_CONFIG_HOME"); ok && v != "" {
 		return v
 	}
-	return filepath.Join(home, ".config")
+	// Use path.Join (POSIX) so the result has forward slashes even when the
+	// helper is tested on a Windows host with a simulated Unix home dir.
+	return pathpkg.Join(home, ".config")
 }
 
 // WinWorkspace is the POSIX path the project folder is mounted at inside the

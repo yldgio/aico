@@ -1,0 +1,68 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Version to release (e.g. 0.4.0). Leave empty to auto-detect
+          from conventional commits (feat→minor, fix→patch).
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: cut release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: install git-cliff
+        run: |
+          curl -sSfL https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz -C /usr/local/bin --strip-components=1 git-cliff-2.13.1/git-cliff
+
+      - name: determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            V="${{ inputs.version }}"
+            echo "version=$V" >> "$GITHUB_OUTPUT"
+            echo "Explicit version: $V"
+          else
+            V=$(git-cliff --bumped-version | sed 's/^v//')
+            LATEST=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+            if [ "$V" = "$LATEST" ]; then
+              echo "::error::No conventional commits since $LATEST — nothing to release."
+              exit 1
+            fi
+            echo "version=$V" >> "$GITHUB_OUTPUT"
+            echo "Auto-detected version: $V"
+          fi
+
+      - name: generate changelog + tag
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git-cliff --tag "v${V}" -o CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "docs: promote changelog [${V}]"
+          git tag -a "v${V}" -m "aico v${V}"
+          git push origin main --tags
+
+      - name: verify CI passes
+        run: |
+          echo "Tag pushed — the ci.yml workflow will run tests + goreleaser."
+          echo "Monitor: https://github.com/yldgio/aico/actions"
