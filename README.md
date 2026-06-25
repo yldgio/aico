@@ -187,6 +187,7 @@ aico run opencode --dry-run       # see what would happen
 
 - **Container identity** is `aico-<agent>-<sha256(abspath)[:8]>` — deterministic, derived purely from the agent name and absolute folder path. No lockfiles are written into your project.
 - **Resume** re-attaches a running container, or restarts a stopped one. `--new` removes it first.
+- **After upgrading `aico`**: if an agent's startup command changed between versions, existing containers still use the old command (Docker bakes it at creation time). Run with `--new` once after upgrading to recreate them.
 - **Runtime independence**: `aico` only ever shells out to a container CLI, so Docker, Podman, or any OCI-compatible drop-in works. Auto-detection order is `docker`, then `podman`.
 - **One shared image** holds all agents; the agent to launch is chosen at run time.
 
