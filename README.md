@@ -39,11 +39,20 @@ curl -sSfL https://raw.githubusercontent.com/yldgio/aico/main/install.sh | sh
 irm https://raw.githubusercontent.com/yldgio/aico/main/install.ps1 | iex
 ```
 
-Installs to `/usr/local/bin` (if writable) or `~/.local/bin` on Unix, and `%USERPROFILE%\.local\bin` on Windows. Override with `INSTALL_DIR`:
+Installs to `/usr/local/bin` (if writable) or `~/.local/bin` on Unix, and `%USERPROFILE%\.local\bin` on Windows (added to User PATH automatically). Override with `INSTALL_DIR`:
 
 ```sh
 curl -sSfL https://raw.githubusercontent.com/yldgio/aico/main/install.sh | INSTALL_DIR=~/bin sh
 ```
+
+### Uninstall
+
+```sh
+aico uninstall
+```
+
+Removes the binary, all aico containers, the agent image, and auth volumes.
+Use `--keep-data` to preserve your login volumes (so you stay logged in if you reinstall).
 
 ### With `go install`
 

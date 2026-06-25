@@ -21,6 +21,7 @@ func newRootCmd(bi BuildInfo) *cobra.Command {
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newExecCmd())
+	root.AddCommand(newUninstallCmd())
 	root.AddCommand(newVersionCmd(bi))
 	return root
 }
