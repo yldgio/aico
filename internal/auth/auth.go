@@ -25,8 +25,8 @@ type Plan struct {
 	Warnings []string // notes about skipped/missing shared config
 }
 
-// configHostPath resolves a ConfigSource to an absolute host path.
-func configHostPath(s agents.ConfigSource) string {
+// ConfigHostPath resolves a ConfigSource to an absolute host path.
+func ConfigHostPath(s agents.ConfigSource) string {
 	switch s.Base {
 	case agents.BaseConfig:
 		return filepath.Join(platform.ConfigDir(), s.Rel)
@@ -38,9 +38,8 @@ func configHostPath(s agents.ConfigSource) string {
 // Build computes the auth Plan for an agent.
 //
 // Always: one persistent login volume per AuthVolume, and each set EnvVar
-// forwarded by name. When shareConfig is true, each ConfigMount whose host
-// directory exists is additionally bind-mounted read-only; missing ones are
-// skipped and recorded as warnings.
+// forwarded by name. The shareConfig parameter is deprecated and ignored
+// (config import now uses docker cp, not bind mounts).
 func Build(a agents.Agent, shareConfig bool) Plan {
 	var p Plan
 
@@ -56,19 +55,6 @@ func Build(a agents.Agent, shareConfig bool) Plan {
 	for _, name := range a.EnvVars {
 		if _, ok := os.LookupEnv(name); ok {
 			p.Args = append(p.Args, "-e", name)
-		}
-	}
-
-	// Opt-in host config sharing, read-only.
-	if shareConfig {
-		for _, src := range a.ConfigMounts {
-			host := configHostPath(src)
-			if _, err := os.Stat(host); err != nil {
-				p.Warnings = append(p.Warnings,
-					fmt.Sprintf("--share-config: host config not found for %s: %s (skipped)", a.Name, host))
-				continue
-			}
-			p.Args = append(p.Args, "-v", fmt.Sprintf("%s:%s:ro", host, src.Target))
 		}
 	}
 

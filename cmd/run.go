@@ -21,7 +21,8 @@ type runOpts struct {
 	runtime      string
 	verbose      bool
 	dryRun       bool
-	shareConfig  bool
+	shareConfig  bool // deprecated, kept for backward compat (now does import)
+	importConfig bool
 	detach       bool
 }
 
@@ -59,7 +60,9 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&o.runtime, "runtime", "", "container runtime to use (default: auto-detect docker, then podman)")
 	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when a shared config dir is missing")
 	f.BoolVar(&o.dryRun, "dry-run", false, "print what would run without creating a container")
-	f.BoolVar(&o.shareConfig, "share-config", false, "also mount the host config dir read-only (off by default; login itself persists in a volume)")
+	f.BoolVar(&o.importConfig, "import-config", false, "copy host config into the container on first run (one-time; does not overwrite on resume)")
+	f.BoolVar(&o.shareConfig, "share-config", false, "deprecated: alias for --import-config")
+	_ = f.MarkHidden("share-config")
 	return c
 }
 
@@ -80,7 +83,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		image = images.DefaultTag
 	}
 	name := container.Name(agent.Name, absPath)
-	authPlan := auth.Build(agent, o.shareConfig)
+	authPlan := auth.Build(agent, false) // shareConfig mounts removed; import-config copies instead
 
 	if o.verbose {
 		for _, w := range authPlan.Warnings {
@@ -148,6 +151,8 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		}
 	}
 
+	wantImport := (o.importConfig || o.shareConfig) && len(agent.ConfigMounts) > 0
+
 	if o.detach {
 		// Create with sleep infinity as the main process, then exec agent.
 		createArgs := append([]string{"run", "-d"}, commonArgs...)
@@ -155,10 +160,26 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		if _, err := rt.Output(createArgs...); err != nil {
 			return fmt.Errorf("create detached container: %w", err)
 		}
+		if wantImport {
+			importConfig(rt, name, agent)
+		}
 		return rt.Exec(name, isTTY(), agentCmd...)
 	}
 
-	// Non-d: single interactive run (current behavior).
+	if wantImport {
+		// Split into create + cp + start so we can copy config before the
+		// agent starts.
+		createArgs := append([]string{"create", interactiveFlag}, commonArgs...)
+		createArgs = append(createArgs, image)
+		createArgs = append(createArgs, agentCmd...)
+		if _, err := rt.Output(createArgs...); err != nil {
+			return fmt.Errorf("create container: %w", err)
+		}
+		importConfig(rt, name, agent)
+		return rt.Start(name)
+	}
+
+	// Non-d, no import: single interactive run (current behavior).
 	createArgs := append([]string{"run", interactiveFlag}, commonArgs...)
 	createArgs = append(createArgs, image)
 	createArgs = append(createArgs, agentCmd...)
@@ -215,5 +236,20 @@ func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd 
 		createArgs = append(createArgs, image)
 		createArgs = append(createArgs, agentCmd...)
 		fmt.Fprintf(os.Stderr, "[dry-run] command:   %s %s\n", rtBin, strings.Join(createArgs, " "))
+	}
+}
+
+// importConfig copies host config directories into the container (one-time).
+// Only copies sources that exist on the host; skips silently otherwise.
+func importConfig(rt *runtime.Runtime, name string, agent agents.Agent) {
+	for _, src := range agent.ConfigMounts {
+		host := auth.ConfigHostPath(src)
+		if _, err := os.Stat(host); err != nil {
+			continue
+		}
+		// docker cp requires a trailing /. to copy contents into target dir.
+		if err := rt.CopyTo(name, host+"/.", src.Target); err != nil {
+			fmt.Fprintf(os.Stderr, "aico: warning: could not import config from %s: %v\n", host, err)
+		}
 	}
 }

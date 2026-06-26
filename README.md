@@ -136,10 +136,10 @@ your host settings never leak into the container.
 value never appears in the runtime's argument list. Set the variable in your shell and
 `aico` passes it through if present.
 
-**Sharing host config** is opt-in. Pass `--share-config` to additionally bind-mount
-your host config directory **read-only** (currently `opencode`'s `~/.config/opencode`;
-for agents that keep config and login in one directory, configure once inside instead).
-`aico` never writes to your host config.
+**Importing host config** is opt-in. Pass `--import-config` on first run to copy
+your host config directory into the container. The copy is one-time — subsequent
+runs don't overwrite, so changes you make inside the container persist.
+`aico` never mounts your host config read-write.
 
 Examples:
 
@@ -150,8 +150,8 @@ OPENAI_API_KEY=sk-... aico run codex
 # pi: log in once inside the container; every later run stays logged in
 aico run pi
 
-# also bring your host opencode config in, read-only
-aico run opencode --share-config
+# also import your host opencode config (one-time copy)
+aico run opencode --import-config
 ```
 
 ---
@@ -181,9 +181,9 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 | `--new` | Discard any existing container for this agent+folder and create a fresh one. |
 | `--image <tag>` | Use a custom image instead of the built-in agent image. Skips the built-in build entirely. |
 | `--runtime <bin>` | Force a specific container runtime (e.g. `podman`). Overrides auto-detection. |
-| `--verbose` | Print warnings, e.g. when a `--share-config` directory is missing. |
+| `--verbose` | Print warnings, e.g. when an `--import-config` source directory is missing. |
 | `--dry-run` | Print what would run, without creating a container. |
-| `--share-config` | Also mount the host config dir read-only (off by default; login itself always persists in a volume). |
+| `--import-config` | Copy host config into the container on first run (one-time; does not overwrite on resume). |
 
 You can also set the runtime via the `AICO_RUNTIME` environment variable:
 

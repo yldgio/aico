@@ -156,3 +156,10 @@ func (r *Runtime) Remove(name string) error {
 	_ = exec.Command(r.Bin, "rm", "-f", name).Run()
 	return nil
 }
+
+// CopyTo copies a file or directory from the host into a container.
+// Equivalent to `docker cp <src> <container>:<dest>`.
+func (r *Runtime) CopyTo(container, hostSrc, containerDest string) error {
+	_, err := r.Output("cp", hostSrc, container+":"+containerDest)
+	return err
+}

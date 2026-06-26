@@ -80,41 +80,37 @@ func TestBuildOpencodeVolumeTarget(t *testing.T) {
 	}
 }
 
-func TestShareConfigAddsReadOnlyMountWhenPresent(t *testing.T) {
+func TestShareConfigNoLongerAddsBindMount(t *testing.T) {
+	// --share-config is deprecated; Build never adds :ro mounts regardless of the flag.
 	dir := t.TempDir()
-	// On Windows, ConfigDir() checks APPDATA before XDG_CONFIG_HOME.
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("APPDATA", dir)
 	if err := os.MkdirAll(filepath.Join(dir, "opencode"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	without := Build(mustLookup(t, "opencode"), false)
-	for _, a := range without.Args {
-		if strings.Contains(a, ":ro") {
-			t.Fatalf("without --share-config there must be no :ro mount: %v", without.Args)
-		}
-	}
-
-	with := Build(mustLookup(t, "opencode"), true)
-	want := filepath.Join(dir, "opencode") + ":/root/.config/opencode:ro"
-	if !argsHave(with.Args, "-v", want) {
-		t.Errorf("--share-config: expected %q in %v", want, with.Args)
-	}
-}
-
-func TestShareConfigMissingDirWarnsAndSkips(t *testing.T) {
-	empty := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", empty)
-	t.Setenv("APPDATA", empty) // Windows: ConfigDir() checks APPDATA first
 	p := Build(mustLookup(t, "opencode"), true)
 	for _, a := range p.Args {
 		if strings.Contains(a, ":ro") {
-			t.Errorf("missing host config must not be mounted: %v", p.Args)
+			t.Errorf("Build should no longer add :ro mounts (import-config uses docker cp): %v", p.Args)
 		}
 	}
-	if len(p.Warnings) == 0 {
-		t.Errorf("missing shared config should produce a warning")
+}
+
+func TestBuildNeverAddsShareConfigMounts(t *testing.T) {
+	// With the migration to --import-config (docker cp), Build should never
+	// produce :ro bind mounts regardless of the shareConfig parameter.
+	empty := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", empty)
+	t.Setenv("APPDATA", empty)
+	p := Build(mustLookup(t, "opencode"), true)
+	for _, a := range p.Args {
+		if strings.Contains(a, ":ro") {
+			t.Errorf("unexpected :ro mount in %v", p.Args)
+		}
+	}
+	if len(p.Warnings) != 0 {
+		t.Errorf("no warnings expected when share-config mounts are removed, got %v", p.Warnings)
 	}
 }
 
