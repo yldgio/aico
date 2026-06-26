@@ -40,9 +40,9 @@ func newExecCmd() *cobra.Command {
 }
 
 func execShell(agentName, path string, o *execOpts) error {
-	agent, err := agents.Lookup(agentName)
-	if err != nil {
-		return err
+	// If agentName isn't a known agent, treat it as a container name.
+	if _, err := agents.Lookup(agentName); err != nil {
+		return execByName(agentName, o)
 	}
 
 	absPath, err := resolvePath(path)
@@ -50,7 +50,7 @@ func execShell(agentName, path string, o *execOpts) error {
 		return err
 	}
 
-	name := container.Name(agent.Name, absPath)
+	name := container.Name(agentName, absPath)
 	rtBin := runtime.Resolve(o.runtime)
 
 	if o.dryRun {
@@ -72,4 +72,20 @@ func execShell(agentName, path string, o *execOpts) error {
 	}
 
 	return rt.Exec(name, isTTY(), "bash")
+}
+
+// execByName opens a shell in a container identified by its aico.name label.
+func execByName(name string, o *execOpts) error {
+	rt, err := runtime.Detect(o.runtime)
+	if err != nil {
+		return err
+	}
+	cName, _, found := findContainerByName(rt, name)
+	if !found {
+		return fmt.Errorf("no container named %q\n\nfix: use `aico ls` to see available containers", name)
+	}
+	if !rt.Running(cName) {
+		return fmt.Errorf("container %q is not running\n\nfix: start it first with `aico run %s`", name, name)
+	}
+	return rt.Exec(cName, isTTY(), "bash")
 }

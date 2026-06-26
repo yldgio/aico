@@ -24,6 +24,7 @@ type runOpts struct {
 	shareConfig  bool // deprecated, kept for backward compat (now does import)
 	importConfig bool
 	detach       bool
+	name         string
 }
 
 func newRunCmd() *cobra.Command {
@@ -50,12 +51,17 @@ func newRunCmd() *cobra.Command {
 			if agentArgs >= 0 {
 				extra = args[agentArgs:]
 			}
+			// If the first arg isn't a known agent, treat it as a container name.
+			if _, err := agents.Lookup(args[0]); err != nil {
+				return runByName(args[0], extra, o)
+			}
 			return runAgent(args[0], path, extra, o)
 		},
 	}
 	f := c.Flags()
 	f.BoolVar(&o.newContainer, "new", false, "discard any existing container and create a fresh one")
 	f.BoolVarP(&o.detach, "detach", "d", false, "keep the container running after the agent exits")
+	f.StringVar(&o.name, "name", "", "assign a short name to the container (default: folder basename)")
 	f.StringVar(&o.image, "image", "", "use a custom image instead of the built-in agent image")
 	f.StringVar(&o.runtime, "runtime", "", "container runtime to use (default: auto-detect docker, then podman)")
 	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when a shared config dir is missing")
@@ -93,6 +99,9 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 
 	mountSrc, workdir := platform.WorkspaceMount(absPath)
 
+	// Determine the container's short name (for aico ls / name-based access).
+	shortName := resolveContainerName(o.name, absPath)
+
 	// Build the agent command (agent binary + any trailing args).
 	agentCmd := append([]string{}, agent.Command...)
 	agentCmd = append(agentCmd, extraArgs...)
@@ -103,9 +112,10 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		interactiveFlag = "-it"
 	}
 
-	// Common volume/workdir args shared by both -d and non-d creation.
+	// Common volume/workdir/label args shared by both -d and non-d creation.
 	commonArgs := []string{"--name", name,
 		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
+	commonArgs = append(commonArgs, containerLabels(agent.Name, absPath, shortName)...)
 	commonArgs = append(commonArgs, authPlan.Args...)
 
 	if o.dryRun {

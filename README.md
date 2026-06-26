@@ -178,6 +178,7 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 | Flag | Description |
 |---|---|
 | `-d`, `--detach` | Keep the container running after the agent exits. Re-run `aico run` to re-attach, or `aico exec` to open a shell. |
+| `--name <name>` | Assign a short name to the container (default: folder basename). Use the name with `aico run <name>` or `aico exec <name>`. |
 | `--new` | Discard any existing container for this agent+folder and create a fresh one. |
 | `--image <tag>` | Use a custom image instead of the built-in agent image. Skips the built-in build entirely. |
 | `--runtime <bin>` | Force a specific container runtime (e.g. `podman`). Overrides auto-detection. |
@@ -233,6 +234,28 @@ wait
 
 # Cron job
 0 3 * * * aico run pi /srv/api -d -- -p "daily maintenance" >> /var/log/aico.log 2>&1
+```
+
+### `aico ls` — list containers
+
+```sh
+aico ls
+```
+
+Shows all aico containers with their name, agent, project path, and status:
+
+```
+NAME    AGENT  PATH                       STATUS
+myapi   pi     /home/dev/projects/api     running
+front   codex  /home/dev/projects/front   stopped
+```
+
+Containers are auto-named from the project folder basename. Override with `--name`.
+Use the name to access containers directly:
+
+```sh
+aico run myapi                    # re-attach by name
+aico exec myapi                   # shell by name
 ```
 
 ### `aico exec` — shell into a running container
