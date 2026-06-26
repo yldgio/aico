@@ -112,9 +112,21 @@ Before opening a PR, all of the following must pass:
 - Don't write files into the user's mounted project to track state.
 - Don't put secret values into command arguments.
 - Don't branch on the operating system outside `internal/platform`.
-- Don't expand scope without updating `specs/aico.md` first. Out of scope for
-  v1: an `aico setup` wizard, composing agent subsets into one image, and
-  keeping containers running after the agent exits.
+- Don't expand scope without updating `specs/aico.md` first.
+
+## Documentation is mandatory
+
+Every change that affects the user — new command, new flag, changed behavior,
+new default — **must** update both:
+
+1. **README.md** — the user-facing documentation. All commands must have a
+   dedicated section, all flags must appear in the flags table, and examples
+   must reflect current behavior.
+2. **`--help` text** — the cobra `Short`, `Long`, and flag descriptions in
+   `cmd/*.go` must accurately describe what the command does.
+
+The user should never discover a feature by accident or find stale docs. If
+you change it, document it. If you add it, document it. No exceptions.
 
 
 ## Behavioral guidelines to reduce common coding mistakes
