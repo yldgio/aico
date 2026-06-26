@@ -64,7 +64,7 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&o.name, "name", "", "assign a short name to the container (default: folder basename)")
 	f.StringVar(&o.image, "image", "", "use a custom image instead of the built-in agent image")
 	f.StringVar(&o.runtime, "runtime", "", "container runtime to use (default: auto-detect docker, then podman)")
-	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when a shared config dir is missing")
+	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when an --import-config source dir is missing")
 	f.BoolVar(&o.dryRun, "dry-run", false, "print what would run without creating a container")
 	f.BoolVar(&o.importConfig, "import-config", false, "copy host config into the container on first run (one-time; does not overwrite on resume)")
 	f.BoolVar(&o.shareConfig, "share-config", false, "deprecated: alias for --import-config")

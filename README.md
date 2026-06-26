@@ -54,6 +54,15 @@ aico uninstall
 Removes the binary, all aico containers, the agent image, and auth volumes.
 Use `--keep-data` to preserve your login volumes (so you stay logged in if you reinstall).
 
+### Remove & Purge
+
+```sh
+aico rm myapi              # remove a single container by name
+aico rm pi ~/projects/api  # remove by agent + path
+aico rm myapi --volumes    # also remove its auth volumes
+aico purge                 # nuclear reset: all containers + volumes + image (binary stays)
+```
+
 ### Upgrade
 
 ```sh
@@ -261,7 +270,7 @@ aico exec myapi                   # shell by name
 ### `aico exec` — shell into a running container
 
 ```sh
-aico exec <agent> [path]
+aico exec <agent|name> [path]
 ```
 
 Opens an interactive bash shell in a running container (started with `-d`).
@@ -270,7 +279,35 @@ the agent.
 
 ```sh
 aico exec pi                      # shell into the pi container for cwd
-aico exec codex ~/work/api        # shell into a specific project's container
+aico exec myapi                   # shell by name
+```
+
+### `aico rm` — remove a container
+
+```sh
+aico rm <name|agent> [path]       # remove by name or agent+path
+aico rm myapi --volumes           # also remove auth volumes (re-login needed)
+```
+
+### `aico purge` — nuclear reset
+
+```sh
+aico purge                        # remove ALL containers + volumes + image
+```
+
+The binary stays. Use `aico uninstall` to also remove it.
+
+### `aico upgrade` — self-update
+
+```sh
+aico upgrade                      # download + replace with latest release
+```
+
+### `aico uninstall` — remove everything
+
+```sh
+aico uninstall                    # purge + delete binary
+aico uninstall --keep-data        # keep login volumes
 ```
 
 ---
@@ -287,7 +324,9 @@ aico exec codex ~/work/api        # shell into a specific project's container
 
 ## Scope
 
-This is v1. Intentionally **not** included yet: a guided `setup` command, composing a subset of agents into one image, and keeping containers running after the agent exits (for editor attach). See `specs/aico.md` for the full specification.
+See `specs/aico.md` for the full specification. Intentionally **not** included
+yet: a guided `setup` wizard, composing a subset of agents into one image, and
+a built-in workflow orchestrator.
 
 ---
 
