@@ -100,7 +100,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	mountSrc, workdir := platform.WorkspaceMount(absPath)
 
 	// Determine the container's short name (for aico ls / name-based access).
-	shortName := resolveContainerName(o.name, absPath)
+	shortName := resolveContainerName(o.name, agent.Name, absPath)
 
 	// Build the agent command (agent binary + any trailing args).
 	agentCmd := append([]string{}, agent.Command...)

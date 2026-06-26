@@ -29,12 +29,12 @@ func containerLabels(agentName, absPath, name string) []string {
 }
 
 // resolveContainerName determines the short name for a container.
-// Uses --name if provided, otherwise the basename of the project path.
-func resolveContainerName(explicit, absPath string) string {
+// Uses --name if provided, otherwise <agent>-<folder-basename>.
+func resolveContainerName(explicit, agentName, absPath string) string {
 	if explicit != "" {
 		return explicit
 	}
-	return filepath.Base(absPath)
+	return agentName + "-" + filepath.Base(absPath)
 }
 
 // findContainerByName looks up a container by its aico.name label.
