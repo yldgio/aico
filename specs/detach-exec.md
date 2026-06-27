@@ -35,6 +35,10 @@ agent to explore the filesystem, debug, or run manual commands.
   after the agent exits.
 - Resume logic updated: if a `-d` container is already running, `aico run`
   re-execs the agent (no flag needed on subsequent runs).
+- Mode-conflict handling: a container's mode is fixed at creation. Passing `-d`
+  for a container that already exists in interactive mode prompts the user to
+  destroy and recreate it (honoring "destruction is opt-in"). With no TTY to
+  prompt on, it errors with a `--new` hint instead of silently ignoring `-d`.
 - `aico exec <agent> [path]` subcommand: opens `bash` in a running container.
   Errors if the container is not running.
 - Passing extra args to the agent: `aico run pi -- "fix tests"` forwards the

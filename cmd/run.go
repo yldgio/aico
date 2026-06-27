@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,7 +40,10 @@ func newRunCmd() *cobra.Command {
 			"On first use a container is created; subsequent runs on the same path\n" +
 			"resume it. Use --new to discard and recreate it.\n\n" +
 			"With -d the container stays running after the agent exits, so you\n" +
-			"can re-attach later or open a shell with `aico exec`.",
+			"can re-attach later or open a shell with `aico exec`. A container's\n" +
+			"mode is fixed at creation: passing -d for a container that already\n" +
+			"exists in interactive mode prompts to recreate it (use --new to skip\n" +
+			"the prompt).",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
@@ -132,6 +136,21 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		_ = rt.Remove(name)
 	}
 
+	// Mode conflict: an explicit -d on a container that was created in
+	// interactive mode. A container's mode is fixed at creation, so honoring
+	// -d requires recreating it. Confirm before destroying anything.
+	if !o.newContainer && o.detach && rt.Exists(name) && !isDetached(rt, name) {
+		ok, err := confirmDetachRecreate(name)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "aico: cancelled; container left unchanged.")
+			return nil
+		}
+		_ = rt.Remove(name)
+	}
+
 	// Resume path: an existing container is reused unless --new was given.
 	if !o.newContainer && rt.Exists(name) {
 		if rt.Running(name) {
@@ -201,6 +220,36 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 // identifies containers created with -d.
 func isDetached(rt *runtime.Runtime, name string) bool {
 	return rt.ContainerCommand(name) == "sleep infinity"
+}
+
+// confirmDetachRecreate asks the user whether to destroy and recreate an
+// existing interactive container so it can run in detached (-d) mode. A
+// container's mode is fixed at creation time, so honoring -d requires a fresh
+// container. In non-interactive mode (no TTY) it returns an error instead of
+// prompting, so scripts fail clearly rather than hang waiting for input.
+func confirmDetachRecreate(name string) (bool, error) {
+	if !isTTY() {
+		return false, fmt.Errorf("container %s exists but was created without -d (interactive mode); aico cannot switch it to detached mode\n\nfix: recreate it with `aico run ... -d --new` (this destroys the current container)", name)
+	}
+	fmt.Fprintf(os.Stderr,
+		"container %s was created in interactive mode.\n"+
+			"-d (detached) on an existing container requires recreating it, which destroys the current container.\n"+
+			"destroy and recreate it in detached mode? [y/N] ", name)
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return false, nil
+	}
+	return isAffirmative(line), nil
+}
+
+// isAffirmative reports whether a typed answer means "yes".
+func isAffirmative(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // resolvePath converts an optional user path (default: cwd) into a cleaned

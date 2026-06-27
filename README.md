@@ -186,7 +186,7 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 
 | Flag | Description |
 |---|---|
-| `-d`, `--detach` | Keep the container running after the agent exits. Re-run `aico run` to re-attach, or `aico exec` to open a shell. |
+| `-d`, `--detach` | Keep the container running after the agent exits. Re-run `aico run` to re-attach, or `aico exec` to open a shell. A container's mode is fixed when it is created: if you pass `-d` for a container that already exists in interactive mode, aico asks for confirmation before destroying and recreating it (or errors with a `--new` hint when there is no terminal to prompt on). |
 | `--name <name>` | Assign a short name to the container (default: folder basename). Use the name with `aico run <name>` or `aico exec <name>`. |
 | `--new` | Discard any existing container for this agent+folder and create a fresh one. |
 | `--image <tag>` | Use a custom image instead of the built-in agent image. Skips the built-in build entirely. |
@@ -214,6 +214,9 @@ aico run opencode --dry-run       # see what would happen
 aico run pi -d                    # interactive session, container persists
 aico run pi                       # re-attach to the same container
 aico exec pi                      # open a shell alongside the agent
+# Note: a container's mode is set at creation. Passing -d for a container
+# created in interactive mode prompts to recreate it (destructive); use --new
+# to recreate without the prompt.
 
 # Pass args to the agent
 aico run pi -- -p "fix the tests" # forward args after --

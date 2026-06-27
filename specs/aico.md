@@ -51,7 +51,6 @@ It is a public OSS CLI binary — any developer should be able to clone the repo
 
 - `aico setup` subcommand — *deferred to v2*
 - Composable / stackable agent subsets per container — *future feature, needs separate design*
-- `--detach` / keep-container-alive-on-exit — *future, useful for VSCode attach scenarios*
 - Multi-agent containers — *one agent per container by design*
 - Cloud / remote containers — *local Docker/Podman only*
 - GUI, TUI, or web interface — *CLI only*
@@ -93,7 +92,8 @@ It is a public OSS CLI binary — any developer should be able to clone the repo
 | Image strategy | One image, all 5 agents, entrypoint varies | Simplest ops; composability is a future problem |
 | Container identity scheme | `aico-<agent>-<hash-of-abspath[:8]>` | Deterministic, no lockfile, no labels needed |
 | Resume default | Re-attach stopped container | `--new` must be explicit; destruction is opt-in |
-| Exit behaviour | Container stops; resumable | Consistent with resume model; `--detach` is future |
+| Exit behaviour | Container stops; resumable | Consistent with resume model; `-d`/`--detach` keeps it alive on exit |
+| `-d` mode conflict | Confirm-then-recreate, never silently ignore | A container's mode is fixed at creation; passing `-d` for an existing interactive container prompts to destroy+recreate it (errors with a `--new` hint when there is no TTY to prompt on). Honors "destruction is opt-in" |
 | Landing UX | Straight into agent UI | Container process IS the agent — no intermediate shell |
 | Auth (file-based) | Read-only bind mount, silently skip if missing | `aico` launches regardless; auth failure is the agent's problem |
 | Auth (env-based) | Forward from host env automatically | codex → `OPENAI_API_KEY`; claude → `ANTHROPIC_API_KEY` |
