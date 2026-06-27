@@ -1,0 +1,10 @@
+# Normalize all text files to LF in the repository and on checkout,
+# so the Windows-mounted working tree doesn't introduce CRLF churn.
+* text=auto eol=lf
+
+# Scripts must stay LF regardless of platform.
+*.sh   text eol=lf
+images/Dockerfile text eol=lf
+
+# Go tooling output that should never be munged.
+go.sum text eol=lf
