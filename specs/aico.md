@@ -94,7 +94,7 @@ It is a public OSS CLI binary — any developer should be able to clone the repo
 | Resume default | Re-attach stopped container | `--new` must be explicit; destruction is opt-in |
 | Exit behaviour | Container stops; resumable | Consistent with resume model; `-d`/`--detach` keeps it alive on exit |
 | `-d` mode conflict | Confirm-then-recreate, never silently ignore | A container's mode is fixed at creation; passing `-d` for an existing interactive container prompts to destroy+recreate it (errors with a `--new` hint when there is no TTY to prompt on). Honors "destruction is opt-in" |
-| Landing UX | Straight into agent UI | Container process IS the agent — no intermediate shell |
+| Landing UX | Straight into agent UI | Container process IS the agent. With `-d` interactive, quitting the agent drops into a bash shell inside the container; non-`-d` has no intermediate shell |
 | Auth (file-based) | Read-only bind mount, silently skip if missing | `aico` launches regardless; auth failure is the agent's problem |
 | Auth (env-based) | Forward from host env automatically | codex → `OPENAI_API_KEY`; claude → `ANTHROPIC_API_KEY` |
 | Missing auth verbosity | Silent by default; warn with `--verbose` | Don't surprise users with noise; power users can opt in |

@@ -186,7 +186,7 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 
 | Flag | Description |
 |---|---|
-| `-d`, `--detach` | Keep the container running after the agent exits. Re-run `aico run` to re-attach, or `aico exec` to open a shell. A container's mode is fixed when it is created: if you pass `-d` for a container that already exists in interactive mode, aico asks for confirmation before destroying and recreating it (or errors with a `--new` hint when there is no terminal to prompt on). |
+| `-d`, `--detach` | Keep the container running after the agent exits. In an interactive session, quitting the agent drops you into a `bash` shell **inside the container** (install tools, inspect files, then relaunch the agent by name, e.g. `pi`); exiting that shell returns you to the host with the container still running. Re-run `aico run` or `aico exec` to come back. A container's mode is fixed when it is created: if you pass `-d` for a container that already exists in interactive mode, aico asks for confirmation before destroying and recreating it (or errors with a `--new` hint when there is no terminal to prompt on). |
 | `--name <name>` | Assign a short name to the container (default: folder basename). Use the name with `aico run <name>` or `aico exec <name>`. |
 | `--new` | Discard any existing container for this agent+folder and create a fresh one. |
 | `--image <tag>` | Use a custom image instead of the built-in agent image. Skips the built-in build entirely. |
@@ -211,10 +211,14 @@ aico run pi --image my/custom:tag # bring your own image
 aico run opencode --dry-run       # see what would happen
 
 # Detach mode: container stays alive after agent exits
-aico run pi -d                    # interactive session, container persists
+aico run pi -d                    # quit the agent -> land in a shell INSIDE the container
+                                  # (run `pi` to re-enter the agent; `exit` leaves it running)
 aico run pi                       # re-attach to the same container
-aico exec pi                      # open a shell alongside the agent
-# Note: a container's mode is set at creation. Passing -d for a container
+aico exec pi                      # open a separate shell alongside the agent
+# Note: relaunching the agent from that shell works for pi/opencode/codex/claude.
+# copilot-cli needs its keyring; relaunch it with `aico run` rather than typing
+# `copilot` directly.
+# A container's mode is set at creation. Passing -d for a container
 # created in interactive mode prompts to recreate it (destructive); use --new
 # to recreate without the prompt.
 

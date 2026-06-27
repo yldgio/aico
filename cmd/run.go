@@ -40,10 +40,12 @@ func newRunCmd() *cobra.Command {
 			"On first use a container is created; subsequent runs on the same path\n" +
 			"resume it. Use --new to discard and recreate it.\n\n" +
 			"With -d the container stays running after the agent exits, so you\n" +
-			"can re-attach later or open a shell with `aico exec`. A container's\n" +
-			"mode is fixed at creation: passing -d for a container that already\n" +
-			"exists in interactive mode prompts to recreate it (use --new to skip\n" +
-			"the prompt).",
+			"can re-attach later or open a shell with `aico exec`. In an interactive\n" +
+			"session, quitting the agent drops you into a bash shell inside the\n" +
+			"container; relaunch the agent by name (e.g. `pi`), or exit the shell to\n" +
+			"return to the host (the container keeps running). A container's mode is\n" +
+			"fixed at creation: passing -d for a container that already exists in\n" +
+			"interactive mode prompts to recreate it (use --new to skip the prompt).",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
@@ -156,7 +158,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		if rt.Running(name) {
 			if isDetached(rt, name) {
 				// -d container (CMD=sleep infinity): exec agent into it.
-				return rt.Exec(name, isTTY(), agentCmd...)
+				return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY())...)
 			}
 			// Non-d container: re-attach to the running process.
 			return rt.Attach(name)
@@ -167,7 +169,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 			if err := rt.StartBackground(name); err != nil {
 				return fmt.Errorf("start container: %w", err)
 			}
-			return rt.Exec(name, isTTY(), agentCmd...)
+			return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY())...)
 		}
 		// Non-d container: interactive start (original behavior).
 		return rt.Start(name)
@@ -192,7 +194,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		if wantImport {
 			importConfig(rt, name, agent)
 		}
-		return rt.Exec(name, isTTY(), agentCmd...)
+		return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY())...)
 	}
 
 	if wantImport {
@@ -220,6 +222,25 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 // identifies containers created with -d.
 func isDetached(rt *runtime.Runtime, name string) bool {
 	return rt.ContainerCommand(name) == "sleep infinity"
+}
+
+// agentExecCmd builds the command passed to `docker exec` when launching the
+// agent in a detached (-d) container.
+//
+// In interactive mode it wraps the agent so that quitting the agent drops the
+// user into an interactive bash shell *inside the container* (agent -> shell ->
+// agent), instead of returning to the host. The wrapper runs the agent, prints
+// a one-line hint, then exec's bash; args are passed as argv (via $@) so no
+// shell quoting is required. In non-interactive mode it returns the agent
+// command unchanged, preserving scripted/piped execution.
+func agentExecCmd(agentCmd []string, tty bool) []string {
+	if !tty {
+		return agentCmd
+	}
+	const hint = "echo 'aico: agent exited - you are in the container shell. " +
+		"relaunch the agent by name, or type exit (Ctrl-D) to leave (the container keeps running).'"
+	script := `"$@"; ` + hint + `; exec bash`
+	return append([]string{"bash", "-c", script, "aico"}, agentCmd...)
 }
 
 // confirmDetachRecreate asks the user whether to destroy and recreate an
@@ -288,7 +309,7 @@ func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd 
 		if isTTY() {
 			execFlag = "-it"
 		}
-		execArgs := append([]string{"exec", execFlag, name}, agentCmd...)
+		execArgs := append([]string{"exec", execFlag, name}, agentExecCmd(agentCmd, isTTY())...)
 		fmt.Fprintf(os.Stderr, "[dry-run] exec:      %s %s\n", rtBin, strings.Join(execArgs, " "))
 	} else {
 		createArgs := append([]string{"run", interactiveFlag}, commonArgs...)

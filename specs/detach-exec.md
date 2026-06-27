@@ -32,7 +32,12 @@ agent to explore the filesystem, debug, or run manual commands.
 
 - `-d` flag on `aico run`: creates the container with `sleep infinity` as the
   main process and runs the agent via `docker exec`. Container stays alive
-  after the agent exits.
+  after the agent exits. In an interactive (TTY) session the agent runs inside
+  a shell wrapper, so quitting the agent drops the user into a `bash` shell
+  inside the container (agent -> shell -> agent); non-interactive `-d` runs the
+  agent directly with no shell fallback. Relaunching the agent from that shell
+  works for pi/opencode/codex/claude; copilot-cli needs its keyring re-
+  established (tracked separately).
 - Resume logic updated: if a `-d` container is already running, `aico run`
   re-execs the agent (no flag needed on subsequent runs).
 - Mode-conflict handling: a container's mode is fixed at creation. Passing `-d`
