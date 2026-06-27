@@ -12,11 +12,31 @@ $Repo   = "yldgio/aico"
 $Binary = "aico"
 
 # ── Detect architecture ──────────────────────────────────────────────────────
+# Prefer RuntimeInformation.OSArchitecture (correct even under emulation), but
+# it can be blocked or return $null in restricted environments — e.g. PowerShell
+# Constrained Language Mode (locked-down corporate Windows) or older .NET
+# Framework. Fall back to the PROCESSOR_ARCHITECTURE environment variables, which
+# Windows always sets and which work even when .NET type access is restricted.
+$OsArch = $null
+try {
+    $OsArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+} catch {
+    $OsArch = $null
+}
+if ([string]::IsNullOrWhiteSpace($OsArch)) {
+    if ($env:PROCESSOR_ARCHITEW6432) {
+        $OsArch = $env:PROCESSOR_ARCHITEW6432
+    } else {
+        $OsArch = $env:PROCESSOR_ARCHITECTURE
+    }
+}
 
-$Arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
-    "X64"   { "amd64" }
-    "Arm64" { "arm64" }
-    default { throw "Unsupported architecture: $_" }
+switch -Regex ($OsArch) {
+    '^(x64|amd64)$' { $Arch = "amd64"; break }
+    '^arm64$'       { $Arch = "arm64"; break }
+    default {
+        throw "Unsupported or undetected CPU architecture: '$OsArch'. Please open an issue at https://github.com/$Repo/issues."
+    }
 }
 
 # ── Determine install directory ──────────────────────────────────────────────
