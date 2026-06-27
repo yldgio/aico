@@ -87,9 +87,12 @@ done
 - **Tests:** OS-specific logic is made testable by parameterising helpers on
   `goos` + an env lookup (see `internal/platform`). Prefer pure, table-style
   unit tests so Windows branches are verifiable on any host.
-- **Commits:** Conventional Commits, atomic (one logical change per commit).
+- **Commits:** follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+  standard — `type(scope): subject` — atomic (one logical change per commit).
   Examples: `feat(auth): ...`, `fix(runtime): ...`, `docs: ...`,
-  `ci: ...`, `chore: ...`.
+  `ci: ...`, `chore: ...`. The release tooling (`git-cliff`) parses these to
+  build the changelog and pick the version bump, so non-conforming messages
+  break releases.
 
 ## Verifying a change
 
@@ -105,6 +108,43 @@ Before opening a PR, all of the following must pass:
    full ENTRYPOINT + CMD composition works. Unit tests that check parts in
    isolation miss environment interactions (e.g., the Node image prepending
    `node` when `command -v` fails on a relative path).
+
+## Releasing
+
+Releases are changelog-driven and tag-triggered. The `Makefile` is the source
+of truth; read its `release` target before cutting one.
+
+Prerequisite: [`git-cliff`](https://git-cliff.org/docs/installation) must be on
+`PATH` (it generates `CHANGELOG.md` from Conventional Commits).
+
+**Local flow (recommended):**
+
+```sh
+make release VERSION=0.13.0   # explicit version
+make release                  # auto-detect bump from conventional commits
+```
+
+`make release` does three things and then stops: regenerates `CHANGELOG.md`,
+commits it as `docs: promote changelog [VERSION]`, and creates the annotated tag
+`vX.Y.Z`. **It does not push.** Review the commit and tag, then:
+
+```sh
+git push origin main --tags
+```
+
+Pushing a `v*` tag triggers `.github/workflows/ci.yml`, which runs the test
+matrix on Linux/macOS/Windows and then `goreleaser` to build the six binaries
+and attach them to the GitHub Release.
+
+**CI-only flow (alternative):** the `release` workflow
+(`.github/workflows/release.yml`) does the same changelog + tag steps on a
+runner. Trigger it manually via `workflow_dispatch` (Actions tab) with an
+optional `version` input; it pushes the tag for you, which then kicks off the
+`ci.yml` build above.
+
+Releasing requires a version bump, so the changelog must contain at least one
+`feat:` or `fix:` commit since the last tag — otherwise both flows abort with
+"nothing to release."
 
 ## Things not to do
 
