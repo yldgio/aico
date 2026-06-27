@@ -168,6 +168,10 @@ new default — **must** update both:
 The user should never discover a feature by accident or find stale docs. If
 you change it, document it. If you add it, document it. No exceptions.
 
+## AGENTS.md is a living document
+
+If you notice a gap in the guidance, add it here. whenever you notice a learning or something to remind yourself of, add it here. If you see a violation, add a note here.
+Keep it up to date. This is a shared knowledge base for all contributors, human and AI.
 
 ## Behavioral guidelines to reduce common coding mistakes
 
