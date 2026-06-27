@@ -77,6 +77,7 @@ It is a public OSS CLI binary — any developer should be able to clone the repo
 | Auth config paths are at standard OS locations | Platform-specific path resolution needed; handled in Task 6 |
 | opencode auth lives at `~/.config/opencode/` and is read-only-safe | May need write access; discovered during Task 5, handled by switching to copy-on-create for that agent |
 | Node.js LTS is sufficient as the base for all 5 agents | A specific agent may need a different Node version; handled per-agent in the Dockerfile |
+| Agents frequently need a Python runtime; the image bakes `uv`/`uvx` plus the latest CPython as the global default (`python`/`python3` on PATH) | If the latest CPython or `uv`'s experimental `--default` install breaks the build, pin a specific Python minor or fall back to Debian's `python3` |
 | All 5 agents accept a non-interactive install via `npm i -g` | If an agent needs interactive setup, the Dockerfile build will fail visibly |
 | The container has outbound internet access to reach AI APIs | If not (air-gapped), auth forwarding still works but API calls will fail — `aico`'s problem surface doesn't change |
 

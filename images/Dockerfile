@@ -39,6 +39,18 @@ RUN mkdir -p /root/.local/share/keyrings \
 COPY copilot-entrypoint.sh /usr/local/bin/copilot-entrypoint.sh
 RUN chmod +x /usr/local/bin/copilot-entrypoint.sh
 
+# Python runtime for agent tasks. uv (and uvx) manage Python and packages; we
+# also install the latest CPython as the global default so `python`/`python3`
+# work directly on PATH without `uv run`. uv, the unversioned executables, and
+# the interpreters all live under /root/.local/bin, which we put on PATH so
+# non-login shells (e.g. `docker exec`) resolve them. Version pinning is left
+# loose for v1 (matches the npm agents above): the build tracks the latest
+# uv + CPython 3.14 at build time.
+ENV PATH="/root/.local/bin:${PATH}"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --no-modify-path \
+    && uv python install --default 3.14 \
+    && uv cache clean
+
 WORKDIR /workspace
 
 # No ENTRYPOINT: aico supplies the agent command at `run` time.

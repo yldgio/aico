@@ -112,6 +112,8 @@ aico run pi
 
 On first run for a given agent, `aico` builds a one-time shared image containing all agents (this takes a few minutes). After that, launches are fast.
 
+The image also bundles a Python runtime for agent tasks: [`uv`](https://docs.astral.sh/uv/) and `uvx`, plus the latest CPython installed as the global default — so `python`, `python3`, `uv`, and `uvx` all work directly on `PATH` (no `uv run` needed). Use `uv` (or `python -m pip`) to add packages.
+
 What happens:
 
 1. `aico` detects your container runtime (Docker, then Podman).
