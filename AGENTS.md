@@ -18,7 +18,8 @@ non-trivial changes.
 
 ```
 main.go                  Entry point; calls cmd.Execute().
-cmd/                     Cobra CLI. root.go wires commands; run.go orchestrates.
+cmd/                     Cobra CLI. root.go wires commands; run.go orchestrates;
+                         bake.go snapshots a container into a pushable image.
 internal/agents/         Registry of the 5 supported agents + their auth sources.
 internal/runtime/        Vendor-independent wrapper over the container CLI.
 internal/container/      Deterministic container identity (aico-<agent>-<hash>).
@@ -86,7 +87,12 @@ done
   in `internal/runtime` and `cmd/run.go`.
 - **Tests:** OS-specific logic is made testable by parameterising helpers on
   `goos` + an env lookup (see `internal/platform`). Prefer pure, table-style
-  unit tests so Windows branches are verifiable on any host.
+  unit tests so Windows branches are verifiable on any host. To assert the
+  exact argv passed to the runtime CLI (e.g. `internal/runtime.Commit`)
+  without depending on a real `docker`/`podman` binary or a shell script
+  (which wouldn't run on Windows), point `Runtime.Bin` at the test binary
+  itself and have `TestMain` short-circuit into a "record argv and exit" stub
+  when a sentinel env var is set — see `internal/runtime/runtime_test.go`.
 - **Commits:** follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
   standard — `type(scope): subject` — atomic (one logical change per commit).
   Examples: `feat(auth): ...`, `fix(runtime): ...`, `docs: ...`,
