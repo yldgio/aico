@@ -163,3 +163,34 @@ func (r *Runtime) CopyTo(container, hostSrc, containerDest string) error {
 	_, err := r.Output("cp", hostSrc, container+":"+containerDest)
 	return err
 }
+
+// Create creates a container without starting it (`docker create`), returning
+// the new container ID. Equivalent to Run/Output's "create" subcommand but
+// named for clarity at call sites that must not start the container (bake).
+func (r *Runtime) Create(args ...string) (string, error) {
+	createArgs := append([]string{"create"}, args...)
+	return r.Output(createArgs...)
+}
+
+// Commit snapshots a container's current filesystem state into a new image
+// tag (`docker commit <container> <tag>`). Works regardless of whether the
+// container is running or stopped.
+func (r *Runtime) Commit(container, tag string) error {
+	_, err := r.Output("commit", container, tag)
+	return err
+}
+
+// BuildWithDockerfile runs `docker build -t <tag> -f <dockerfile> <contextDir>`.
+// The Dockerfile may live outside contextDir (e.g. a temp file), while
+// contextDir remains the build context, so its `.dockerignore` is honored
+// (docker resolves .dockerignore from the context root regardless of -f).
+// Output is streamed to the current process's stdio.
+func (r *Runtime) BuildWithDockerfile(tag, dockerfile, contextDir string) error {
+	return r.Run("build", "-t", tag, "-f", dockerfile, contextDir)
+}
+
+// RemoveImage force-removes an image tag, ignoring "no such image".
+func (r *Runtime) RemoveImage(tag string) error {
+	_ = exec.Command(r.Bin, "rmi", "-f", tag).Run()
+	return nil
+}

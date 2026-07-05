@@ -22,6 +22,7 @@ func newRootCmd(bi BuildInfo) *cobra.Command {
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newExecCmd())
+	root.AddCommand(newBakeCmd())
 	root.AddCommand(newLsCmd())
 	root.AddCommand(newRmCmd())
 	root.AddCommand(newPurgeCmd())
