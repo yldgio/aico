@@ -298,6 +298,46 @@ aico rm <name|agent> [path]       # remove by name or agent+path
 aico rm myapi --volumes           # also remove auth volumes (re-login needed)
 ```
 
+### `aico bake` — snapshot a container into an image
+
+```sh
+aico bake <agent> [path] -t <tag> [flags]
+```
+
+Bakes a fully-configured aico container into a taggable, pushable OCI image —
+non-interactively, without ever launching the agent UI. If a container for
+`<agent>` + `[path]` already exists, bake commits *that* container's current
+state (running or stopped); otherwise it creates one (`docker create`, never
+started) and commits it. A bake-created container is a normal aico container:
+a later `aico run` resumes it.
+
+| Flag | Description |
+|---|---|
+| `-t`, `--tag` | **Required.** Tag for the resulting image, e.g. `myorg/pi:latest`. |
+| `-w`, `--include-workspace` | Also copy the project folder into the image (honoring `.dockerignore`) and set `WORKDIR` to it, so `docker run <image> <agent>` starts inside the code. |
+| `--new` | Discard any existing container for this agent+folder and create a fresh one before baking. |
+| `--image <tag>` | Base image used only when bake must *create* the container (ignored if it already exists). |
+| `--runtime <bin>` | Force a specific container runtime. |
+| `--dry-run` | Print the commit/build plan without executing. |
+| `--verbose` | Print extra signal, e.g. whether an existing container was reused. |
+
+```sh
+aico bake pi -t myorg/pi-custom:latest              # snapshot the current folder's pi container
+aico bake pi ~/work/api -t myorg/api:latest -w      # also bake the project files in, WORKDIR set to it
+aico bake pi -t myorg/pi:latest --dry-run           # see the plan without touching anything
+```
+
+**Auth is never baked in.** Login lives in named volumes and env vars, which
+`docker commit` excludes by construction — bake prints a caution line as a
+reminder to double-check before pushing publicly, but doesn't otherwise touch
+the image contents. **Pushing is on you**: aico stays out of the
+registry/network path.
+
+```sh
+aico bake pi -t myorg/pi:latest
+docker push myorg/pi:latest
+```
+
 ### `aico purge` — nuclear reset
 
 ```sh
