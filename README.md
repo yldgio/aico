@@ -130,27 +130,44 @@ When you exit the agent, the container stops. The next `aico run` on the same fo
 ## Authentication
 
 You log in **once, inside the container**, and stay logged in for every future run.
-`aico` keeps each agent's login in a per-agent **named volume** (`aico-auth-<agent>`)
-that is global across your projects — so logging into `pi` once means every project
-using `pi` is already authenticated. Nothing from your host is read by default, so
-your host settings never leak into the container.
+By default, `aico` keeps each agent's root state (login + settings) in a volume
+**scoped to the current project** (agent + folder), so two different projects using
+the same agent never share login or settings — one project's state can't leak into
+another's. Nothing from your host is read by default, so your host settings never
+leak into the container either.
 
-| Agent | How login is preserved |
+If you want the old "log in once, every project shares it" behavior, pass
+`--shared-root`: it switches to a single **global** volume per agent
+(`aico-auth-<agent>`), created the first time you use the flag and reused by every
+later `--shared-root` run for that agent, on any project.
+
+| Agent | Root-state target(s) inside the container |
 |---|---|
-| `pi` | volume `aico-auth-pi` → `/root/.pi/agent` |
-| `opencode` | volume `aico-auth-opencode` → `/root/.local/share/opencode` + `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` if set |
-| `codex` | volume `aico-auth-codex` → `/root/.codex` + `OPENAI_API_KEY` if set |
-| `claude` | volume `aico-auth-claude` → `/root/.claude` + `ANTHROPIC_API_KEY` if set |
-| `copilot-cli` | volumes `aico-auth-copilot-cli` → `/root/.copilot`, `…-gh` → `/root/.config/gh`, `…-keyring` → `/root/.local/share/keyrings` (token stored via gnome-keyring/libsecret) |
+| `pi` | `/root/.pi/agent` |
+| `opencode` | `/root/.local/share/opencode` + `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` if set |
+| `codex` | `/root/.codex` + `OPENAI_API_KEY` if set |
+| `claude` | `/root/.claude` + `ANTHROPIC_API_KEY` if set |
+| `copilot-cli` | `/root/.copilot`, `/root/.config/gh`, `/root/.local/share/keyrings` (token stored via gnome-keyring/libsecret) |
+
+By default the volume backing each target above is named deterministically from the
+agent and project path (e.g. `aico-auth-pi-<hash>`); with `--shared-root` it's the
+global name shown in the table (e.g. `aico-auth-pi`). `--dry-run` always prints the
+selected root mode and the exact volume names that will be used.
+
+A container's root mode is fixed at creation. If you resume a container whose root
+mode doesn't match what you asked for this time (including a container created
+before this feature existed, which always behaved as `--shared-root`), `aico` asks
+before destroying and recreating it — the root volumes themselves are never deleted
+by this, only the container. Pass `--new` to skip the prompt.
 
 **API keys** are forwarded **by name only** (`-e KEY`, never `-e KEY=VALUE`), so the
 value never appears in the runtime's argument list. Set the variable in your shell and
 `aico` passes it through if present.
 
-**Importing host config** is opt-in. Pass `--import-config` on first run to copy
-your host config directory into the container. The copy is one-time — subsequent
-runs don't overwrite, so changes you make inside the container persist.
-`aico` never mounts your host config read-write.
+**Importing host config** is opt-in and independent of `--shared-root`. Pass
+`--import-config` on first run to copy your host config directory into the
+container. The copy is one-time — subsequent runs don't overwrite, so changes you
+make inside the container persist. `aico` never mounts your host config read-write.
 
 Examples:
 
@@ -158,8 +175,11 @@ Examples:
 # codex picks up your key from the environment
 OPENAI_API_KEY=sk-... aico run codex
 
-# pi: log in once inside the container; every later run stays logged in
+# pi: log in once inside the container; every later run on this project stays logged in
 aico run pi
+
+# pi: share one login across every project (old default), created on first use
+aico run pi --shared-root
 
 # also import your host opencode config (one-time copy)
 aico run opencode --import-config
@@ -219,6 +239,7 @@ aico run pi --image custom:tag       # explicit image disables devenv
 | `--dry-run` | Print what would run, without creating a container. |
 | `--import-config` | Copy host config into the container on first run (one-time; does not overwrite on resume). |
 | `--no-devenv` | Skip devenv mode even if the project has a `devenv.nix` file. By default, devenv mode is auto-activated when `devenv.nix` is present and `--image` is not set. |
+| `--shared-root` | Use one root volume shared by every project for this agent, instead of a per-project volume (see [Authentication](#authentication)). |
 
 You can also set the runtime via the `AICO_RUNTIME` environment variable:
 
@@ -318,8 +339,14 @@ aico exec myapi                   # shell by name
 
 ```sh
 aico rm <name|agent> [path]       # remove by name or agent+path
-aico rm myapi --volumes           # also remove auth volumes (re-login needed)
+aico rm myapi --volumes           # also remove its root volumes (re-login needed)
 ```
+
+`--volumes` only removes the volumes actually used by that container: by default
+that's this project's own root volumes; for a container created with
+`--shared-root` (or predating per-project isolation), it's the global volumes
+shared with every other project using that agent in shared-root mode — `aico`
+warns before removing those.
 
 ### `aico bake` — snapshot a container into an image
 
@@ -343,6 +370,7 @@ a later `aico run` resumes it.
 | `--runtime <bin>` | Force a specific container runtime. |
 | `--dry-run` | Print the commit/build plan without executing. |
 | `--verbose` | Print extra signal, e.g. whether an existing container was reused. |
+| `--shared-root` | Use one root volume shared by every project for this agent, instead of a per-project volume (see [Authentication](#authentication)). |
 
 ```sh
 aico bake pi -t myorg/pi-custom:latest              # snapshot the current folder's pi container

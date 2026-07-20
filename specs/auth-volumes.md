@@ -3,6 +3,11 @@
 > Goal: aico shares only what's needed to stay logged in across sessions — nothing else.
 > Date: 2026-06-25
 > Status: Complete (2026-06-25)
+>
+> **Superseded in part by [`shared-root-opt-in.md`](shared-root-opt-in.md):** the
+> global per-agent volume model described below is now the `--shared-root`
+> opt-in; the default is a per-project volume. See that spec for the current
+> contract.
 
 ---
 
