@@ -18,16 +18,22 @@ const (
 	labelPath   = "aico.path"
 	labelName   = "aico.name"
 	labelDevenv = "aico.devenv"
+	labelRoot   = "aico.root" // root-volume mode: "project-isolated" or "shared-root"
 )
 
-// containerLabels returns the --label args for a new container. The
+// containerLabels returns the --label args for a new container. rootMode is
+// the auth.RootMode string the container was created with (see
+// internal/auth), recorded so a later `aico run`/`aico bake` can detect a
+// mismatch (e.g. --shared-root passed against a container that was created
+// project-isolated) instead of silently reusing the wrong root volumes. The
 // aico.devenv label is only set for devenv-mode containers, so containers for
 // non-devenv projects are labelled exactly as before.
-func containerLabels(agentName, absPath, name string, devenv bool) []string {
+func containerLabels(agentName, absPath, name, rootMode string, devenv bool) []string {
 	labels := []string{
 		"--label", labelAgent + "=" + agentName,
 		"--label", labelPath + "=" + absPath,
 		"--label", labelName + "=" + name,
+		"--label", labelRoot + "=" + rootMode,
 	}
 	if devenv {
 		labels = append(labels, "--label", labelDevenv+"=true")
@@ -42,6 +48,15 @@ func containerDevenv(rt *runtime.Runtime, name string) bool {
 	return err == nil && strings.TrimSpace(v) == "true"
 }
 
+// containerRootMode returns the aico.root label value for cName, or "" if the
+// container predates this label -- i.e. a legacy container created under the
+// old shared-by-default behavior.
+func containerRootMode(rt *runtime.Runtime, cName string) string {
+	v, _ := rt.Output("inspect", "--format",
+		fmt.Sprintf("{{index .Config.Labels %q}}", labelRoot), cName)
+	return strings.TrimSpace(v)
+}
+
 // resolveContainerName determines the short name for a container.
 // Uses --name if provided, otherwise <agent>-<folder-basename>.
 func resolveContainerName(explicit, agentName, absPath string) string {
@@ -52,20 +67,24 @@ func resolveContainerName(explicit, agentName, absPath string) string {
 }
 
 // findContainerByName looks up a container by its aico.name label.
-// Returns the docker container name (aico-<agent>-<hash>) or empty string.
-func findContainerByName(rt *runtime.Runtime, name string) (containerName, agentName string, found bool) {
+// Returns the docker container name (aico-<agent>-<hash>), its agent name,
+// and its project path (from the aico.path label; empty for containers
+// created before labels existed).
+func findContainerByName(rt *runtime.Runtime, name string) (containerName, agentName, absPath string, found bool) {
 	// Query all containers with the matching aico.name label.
 	out, err := rt.Output("ps", "-a", "--filter", "label="+labelName+"="+name,
 		"--format", "{{.Names}}")
 	if err != nil || strings.TrimSpace(out) == "" {
-		return "", "", false
+		return "", "", "", false
 	}
 	cName := strings.Split(strings.TrimSpace(out), "\n")[0]
 
-	// Get the agent from labels.
+	// Get the agent and path from labels.
 	agent, _ := rt.Output("inspect", "--format",
 		fmt.Sprintf("{{index .Config.Labels %q}}", labelAgent), cName)
-	return cName, strings.TrimSpace(agent), true
+	path, _ := rt.Output("inspect", "--format",
+		fmt.Sprintf("{{index .Config.Labels %q}}", labelPath), cName)
+	return cName, strings.TrimSpace(agent), strings.TrimSpace(path), true
 }
 
 // runByName resumes a container identified by its aico.name label.
@@ -75,7 +94,7 @@ func runByName(name string, extraArgs []string, o *runOpts) error {
 		return err
 	}
 
-	cName, agentName, found := findContainerByName(rt, name)
+	cName, agentName, _, found := findContainerByName(rt, name)
 	if !found {
 		return fmt.Errorf("no container named %q\n\nfix: use `aico ls` to see available containers, or create one with `aico run <agent> [path] --name %s`", name, name)
 	}

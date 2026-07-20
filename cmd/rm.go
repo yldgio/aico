@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yldgio/aico/internal/agents"
+	"github.com/yldgio/aico/internal/auth"
 	"github.com/yldgio/aico/internal/container"
 	"github.com/yldgio/aico/internal/runtime"
 )
@@ -18,8 +19,13 @@ func newRmCmd() *cobra.Command {
 		Use:   "rm <name|agent> [path]",
 		Short: "Remove an aico container",
 		Long: "Remove a specific aico container by name or by agent + path.\n\n" +
-			"By default the agent's auth volumes are kept (so you stay logged in\n" +
-			"if you recreate). Pass --volumes to also remove the auth volumes.",
+			"By default the agent's root volumes are kept (so you stay logged in\n" +
+			"if you recreate). Pass --volumes to also remove them.\n\n" +
+			"Root volumes are project-scoped by default, so --volumes only affects\n" +
+			"this project's agent state. If the container was created with\n" +
+			"--shared-root (or predates per-project isolation), --volumes removes\n" +
+			"the global volume shared with every other project using that agent in\n" +
+			"shared-root mode -- aico warns before doing so.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
@@ -29,7 +35,7 @@ func newRmCmd() *cobra.Command {
 			return rmContainer(args[0], path, withVolumes, rtOverride)
 		},
 	}
-	c.Flags().BoolVar(&withVolumes, "volumes", false, "also remove the agent's auth volumes (you will need to re-login)")
+	c.Flags().BoolVar(&withVolumes, "volumes", false, "also remove the agent's root volumes (you will need to re-login; see --shared-root warning above)")
 	c.Flags().StringVar(&rtOverride, "runtime", "", "container runtime to use")
 	return c
 }
@@ -40,20 +46,21 @@ func rmContainer(nameOrAgent, path string, withVolumes bool, rtOverride string) 
 		return err
 	}
 
-	var cName, agentName string
+	var cName, agentName, absPath string
 
 	// If it's a known agent, resolve by agent+path.
 	if _, lookupErr := agents.Lookup(nameOrAgent); lookupErr == nil {
-		absPath, err := resolvePath(path)
+		ap, err := resolvePath(path)
 		if err != nil {
 			return err
 		}
+		absPath = ap
 		cName = container.Name(nameOrAgent, absPath)
 		agentName = nameOrAgent
 	} else {
 		// Resolve by aico.name label.
 		var found bool
-		cName, agentName, found = findContainerByName(rt, nameOrAgent)
+		cName, agentName, absPath, found = findContainerByName(rt, nameOrAgent)
 		if !found {
 			return fmt.Errorf("no container named %q\n\nfix: use `aico ls` to see available containers", nameOrAgent)
 		}
@@ -63,6 +70,12 @@ func rmContainer(nameOrAgent, path string, withVolumes bool, rtOverride string) 
 		return fmt.Errorf("container %s does not exist", cName)
 	}
 
+	// Determine which root-volume set this container uses, before removing it:
+	// a legacy container (no aico.root label) always used the old global
+	// shared naming, so its volumes are cleaned up as shared-root ones too.
+	rootLabel := containerRootMode(rt, cName)
+	shared := rootLabel == "" || rootLabel == string(auth.RootShared)
+
 	// Remove container (force-stops if running).
 	if err := rt.Remove(cName); err != nil {
 		return fmt.Errorf("remove container: %w", err)
@@ -70,19 +83,22 @@ func rmContainer(nameOrAgent, path string, withVolumes bool, rtOverride string) 
 	fmt.Fprintf(os.Stderr, "removed container %s\n", cName)
 
 	if withVolumes && agentName != "" {
-		removeAgentVolumes(rt, agentName)
+		if shared {
+			fmt.Fprintln(os.Stderr, "aico: warning: this container used the shared root volume(s), also used by every other project sharing this agent with --shared-root; removing them logs those projects out too.")
+		}
+		removeAgentVolumes(rt, agentName, absPath, shared)
 	}
 
 	return nil
 }
 
-func removeAgentVolumes(rt *runtime.Runtime, agentName string) {
+func removeAgentVolumes(rt *runtime.Runtime, agentName, absPath string, shared bool) {
 	agent, err := agents.Lookup(agentName)
 	if err != nil {
 		return
 	}
 	for _, v := range agent.AuthVolumes {
-		volName := agents.VolumeName(agentName, v)
+		volName := agents.VolumeName(agentName, v, absPath, shared)
 		if _, err := rt.Output("volume", "rm", "-f", volName); err == nil {
 			fmt.Fprintf(os.Stderr, "removed volume %s\n", volName)
 		}

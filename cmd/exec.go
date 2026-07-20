@@ -80,7 +80,7 @@ func execByName(name string, o *execOpts) error {
 	if err != nil {
 		return err
 	}
-	cName, _, found := findContainerByName(rt, name)
+	cName, _, _, found := findContainerByName(rt, name)
 	if !found {
 		return fmt.Errorf("no container named %q\n\nfix: use `aico ls` to see available containers", name)
 	}

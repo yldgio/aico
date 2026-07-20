@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yldgio/aico/internal/auth"
 	"github.com/yldgio/aico/internal/runtime"
 )
 
@@ -147,22 +148,22 @@ func TestAgentExecCmdDevenv(t *testing.T) {
 }
 
 func TestContainerLabelsDevenv(t *testing.T) {
-	plain := containerLabels("pi", "/p", "pi-p", false)
+	plain := containerLabels("pi", "/p", "pi-p", string(auth.RootIsolated), false)
 	if strings.Contains(strings.Join(plain, " "), labelDevenv) {
 		t.Errorf("non-devenv container got a devenv label: %v", plain)
 	}
-	dev := containerLabels("pi", "/p", "pi-p", true)
+	dev := containerLabels("pi", "/p", "pi-p", string(auth.RootIsolated), true)
 	if !reflect.DeepEqual(dev[len(dev)-2:], []string{"--label", "aico.devenv=true"}) {
 		t.Errorf("devenv labels = %v, want trailing --label aico.devenv=true", dev)
 	}
 }
 
 func TestCommonContainerArgsDevenv(t *testing.T) {
-	plain := commonContainerArgs("aico-pi-abc", "/proj", "/workspace", "pi", "/proj", "pi-proj", false, []string{"-v", "aico-auth-pi:/root"})
+	plain := commonContainerArgs("aico-pi-abc", "/proj", "/workspace", "pi", "/proj", "pi-proj", string(auth.RootIsolated), false, []string{"-v", "aico-auth-pi:/root"})
 	if joined := strings.Join(plain, " "); strings.Contains(joined, "aico-nix") {
 		t.Errorf("non-devenv args mount the nix volume: %v", plain)
 	}
-	dev := commonContainerArgs("aico-pi-abc", "/proj", "/workspace", "pi", "/proj", "pi-proj", true, []string{"-v", "aico-auth-pi:/root"})
+	dev := commonContainerArgs("aico-pi-abc", "/proj", "/workspace", "pi", "/proj", "pi-proj", string(auth.RootIsolated), true, []string{"-v", "aico-auth-pi:/root"})
 	if !containsPair(dev, "-v", nixVolumeArg) {
 		t.Errorf("devenv args missing -v %s: %v", nixVolumeArg, dev)
 	}
@@ -181,7 +182,7 @@ func launchArgv(devenv bool) (common, agentCmd []string, image string) {
 	if devenv {
 		image = "aico-agents-devenv:latest"
 	}
-	common = commonContainerArgs("aico-pi-abc123", "/proj", "/workspace", "pi", "/proj", "pi-proj", devenv, nil)
+	common = commonContainerArgs("aico-pi-abc123", "/proj", "/workspace", "pi", "/proj", "pi-proj", string(auth.RootIsolated), devenv, nil)
 	return common, []string{"pi", "--version"}, image
 }
 
@@ -291,5 +292,28 @@ func TestIsAffirmative(t *testing.T) {
 		if isAffirmative(s) {
 			t.Errorf("isAffirmative(%q) = true, want false", s)
 		}
+	}
+}
+
+func TestRootModeMismatchFor(t *testing.T) {
+	cases := []struct {
+		name     string
+		existing string
+		want     auth.RootMode
+		mismatch bool
+	}{
+		{"legacy container, default isolated requested", "", auth.RootIsolated, true},
+		{"legacy container, shared-root requested", "", auth.RootShared, false},
+		{"isolated container, isolated requested", string(auth.RootIsolated), auth.RootIsolated, false},
+		{"isolated container, shared-root requested", string(auth.RootIsolated), auth.RootShared, true},
+		{"shared container, shared-root requested", string(auth.RootShared), auth.RootShared, false},
+		{"shared container, isolated requested", string(auth.RootShared), auth.RootIsolated, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := rootModeMismatchFor(c.existing, c.want); got != c.mismatch {
+				t.Errorf("rootModeMismatchFor(%q, %q) = %v, want %v", c.existing, c.want, got, c.mismatch)
+			}
+		})
 	}
 }

@@ -24,6 +24,7 @@ type runOpts struct {
 	dryRun       bool
 	shareConfig  bool // deprecated, kept for backward compat (now does import)
 	importConfig bool
+	sharedRoot   bool
 	detach       bool
 	name         string
 	noDevenv     bool
@@ -46,6 +47,12 @@ func newRunCmd() *cobra.Command {
 			"An explicit --image takes precedence and disables devenv mode.\n" +
 			"The Nix store is cached in a shared aico-nix Docker volume, so environments\n" +
 			"build only once and later runs start immediately.\n\n" +
+			"Agent root state (login + settings) is isolated per project by default:\n" +
+			"each project gets its own root volume. Pass --shared-root to use a single\n" +
+			"volume shared by every project for that agent instead (the pre-existing\n" +
+			"global volume, if any, is reused). A container's root mode is fixed at\n" +
+			"creation; switching modes requires recreating it (aico will prompt, or\n" +
+			"error with a --new hint when there is no TTY to prompt on).\n\n" +
 			"With -d the container stays running after the agent exits, so you\n" +
 			"can re-attach later or open a shell with `aico exec`. In an interactive\n" +
 			"session, quitting the agent drops you into a bash shell inside the\n" +
@@ -80,6 +87,7 @@ func newRunCmd() *cobra.Command {
 	f.BoolVar(&o.verbose, "verbose", false, "print warnings, e.g. when an --import-config source dir is missing")
 	f.BoolVar(&o.dryRun, "dry-run", false, "print what would run without creating a container")
 	f.BoolVar(&o.importConfig, "import-config", false, "copy host config into the container on first run (one-time; does not overwrite on resume)")
+	f.BoolVar(&o.sharedRoot, "shared-root", false, "use one root volume shared by every project for this agent, instead of a per-project volume")
 	f.BoolVar(&o.shareConfig, "share-config", false, "deprecated: alias for --import-config")
 	_ = f.MarkHidden("share-config")
 	f.BoolVar(&o.noDevenv, "no-devenv", false, "skip devenv mode even if the project has a devenv.nix (default: false; devenv mode is used automatically when devenv.nix is present and --image is not set; --image also disables devenv mode)")
@@ -113,7 +121,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 			image = images.DevenvTag
 		}
 	}
-	authPlan := auth.Build(agent, false) // shareConfig mounts removed; import-config copies instead
+	authPlan := auth.Build(agent, absPath, o.sharedRoot)
 
 	if o.verbose {
 		for _, w := range authPlan.Warnings {
@@ -137,13 +145,13 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	}
 
 	// Common volume/workdir/label args shared by both -d and non-d creation.
-	commonArgs := commonContainerArgs(name, mountSrc, workdir, agent.Name, absPath, shortName, devenvMode, authPlan.Args)
+	commonArgs := commonContainerArgs(name, mountSrc, workdir, agent.Name, absPath, shortName, string(authPlan.RootMode), devenvMode, authPlan.Args)
 
 	if o.dryRun {
 		if devenvMode {
 			fmt.Fprintln(os.Stderr, "[dry-run] devenv:    detected (devenv.nix found)")
 		}
-		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach, interactiveFlag, devenvMode)
+		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach, interactiveFlag, authPlan, devenvMode)
 		return nil
 	}
 
@@ -169,6 +177,26 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 			return nil
 		}
 		_ = rt.Remove(name)
+	}
+
+	// Root-mode conflict: a container's root-volume set (project-isolated vs
+	// shared-root) is fixed at creation. If this run requests a different mode
+	// than the existing container was created with -- including a legacy
+	// container that predates this label, which always behaved as shared-root
+	// -- recreating is required so the wrong root volumes are never silently
+	// reused.
+	if !o.newContainer && rt.Exists(name) {
+		if mismatch, existingMode := rootModeMismatch(rt, name, authPlan.RootMode); mismatch {
+			ok, err := confirmRootRecreate(name, existingMode, string(authPlan.RootMode))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "aico: cancelled; container left unchanged.")
+				return nil
+			}
+			_ = rt.Remove(name)
+		}
 	}
 
 	// Mode conflict: the container's devenv mode is fixed at creation (image,
@@ -255,15 +283,16 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 const nixVolumeArg = "aico-nix:/nix"
 
 // commonContainerArgs builds the volume/workdir/label args shared by every
-// container-creating path. In devenv mode it also mounts the global Nix store
-// volume; non-devenv projects get exactly the args they got before.
-func commonContainerArgs(name, mountSrc, workdir, agentName, absPath, shortName string, devenv bool, authArgs []string) []string {
+// container-creating path. It records the root-volume mode as a label, and in
+// devenv mode also mounts the global Nix store volume; non-devenv projects
+// get exactly the args they got before.
+func commonContainerArgs(name, mountSrc, workdir, agentName, absPath, shortName, rootMode string, devenv bool, authArgs []string) []string {
 	args := []string{"--name", name,
 		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
 	if devenv {
 		args = append(args, "-v", nixVolumeArg)
 	}
-	args = append(args, containerLabels(agentName, absPath, shortName, devenv)...)
+	args = append(args, containerLabels(agentName, absPath, shortName, rootMode, devenv)...)
 	return append(args, authArgs...)
 }
 
@@ -384,6 +413,50 @@ func confirmDevenvRecreate(name string, wantDevenv bool) (bool, error) {
 	return isAffirmative(line), nil
 }
 
+// rootModeMismatch reports whether an existing container's root-volume mode
+// differs from want. A container with no aico.root label predates this
+// feature and always behaved as shared-root, so it only mismatches when want
+// is project-isolated (the new default).
+func rootModeMismatch(rt *runtime.Runtime, name string, want auth.RootMode) (mismatch bool, existingMode string) {
+	existingMode = containerRootMode(rt, name)
+	return rootModeMismatchFor(existingMode, want), existingMode
+}
+
+// rootModeMismatchFor is the pure comparison behind rootModeMismatch, split
+// out so it can be unit-tested without shelling out to a runtime CLI.
+func rootModeMismatchFor(existingLabel string, want auth.RootMode) bool {
+	if existingLabel == "" {
+		// Legacy container, created before the aico.root label existed: it
+		// always used the old global shared-volume behavior.
+		return want != auth.RootShared
+	}
+	return existingLabel != string(want)
+}
+
+// confirmRootRecreate asks the user whether to destroy and recreate an
+// existing container so it can switch root-volume modes (project-isolated vs
+// shared-root). A container's root mode is fixed at creation, so honoring a
+// different mode requires a fresh container; the root volumes themselves are
+// not deleted by this recreate. In non-interactive mode (no TTY) it returns
+// an error instead of prompting, so scripts fail clearly rather than hang.
+func confirmRootRecreate(name, existingMode, wantMode string) (bool, error) {
+	if existingMode == "" {
+		existingMode = string(auth.RootShared) + " (legacy, pre-dates per-project isolation)"
+	}
+	if !isTTY() {
+		return false, fmt.Errorf("container %s uses root mode %q but this run requested %q; aico cannot switch a container's root volumes in place\n\nfix: recreate it with `aico run ... --new` (add --shared-root to keep using the shared root)", name, existingMode, wantMode)
+	}
+	fmt.Fprintf(os.Stderr,
+		"container %s currently uses root mode %q, but this run requested %q.\n"+
+			"a container's root mode is fixed at creation; switching requires recreating it (its root volumes are preserved, only the container is replaced).\n"+
+			"destroy and recreate the container now? [y/N] ", name, existingMode, wantMode)
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return false, nil
+	}
+	return isAffirmative(line), nil
+}
+
 // isAffirmative reports whether a typed answer means "yes".
 func isAffirmative(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -429,7 +502,7 @@ func decideDevenvMode(detected, noDevenv bool, image string) bool {
 	return detected && !noDevenv && image == ""
 }
 
-func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool, interactiveFlag string, devenv bool) {
+func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool, interactiveFlag string, authPlan auth.Plan, devenv bool) {
 	if rtBin == "" {
 		rtBin = "(none detected — install docker or podman)"
 	}
@@ -437,6 +510,8 @@ func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd 
 	fmt.Fprintf(os.Stderr, "[dry-run] image:     %s\n", image)
 	fmt.Fprintf(os.Stderr, "[dry-run] container: %s\n", name)
 	fmt.Fprintf(os.Stderr, "[dry-run] workspace: %s\n", workdir)
+	fmt.Fprintf(os.Stderr, "[dry-run] root mode: %s\n", authPlan.RootMode)
+	fmt.Fprintf(os.Stderr, "[dry-run] root volumes: %s\n", strings.Join(authPlan.RootVolumes, ", "))
 	if detach {
 		fmt.Fprintf(os.Stderr, "[dry-run] create:    %s %s\n", rtBin, strings.Join(detachCreateArgs(image, commonArgs), " "))
 		execFlag := "-i"

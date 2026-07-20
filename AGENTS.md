@@ -47,14 +47,19 @@ These are deliberate decisions. Do not violate them without updating the spec.
    aico must not manage sockets or `DOCKER_HOST` itself.
 2. **Container identity is pure.** `aico-<agent>-<sha256(abspath)[:8]>`. No
    lockfiles, labels, or state written into the user's project.
-3. **Login persists in a per-agent volume; aico never seeds it from the host.**
-   Each agent's login lives in a global named volume `aico-auth-<agent>`; the
-   user logs in once inside the container and stays logged in. Nothing from the
-   host is read by default. API keys are forwarded **by name only** (`-e KEY`,
-   never `-e KEY=VALUE`) so secrets never appear in `argv`. Host config is shared
-   read-only only with `--share-config`. copilot-cli uses gnome-keyring
-   (libsecret) running headlessly via an entrypoint script; its token is stored
-   in a keyring volume, not a raw file.
+3. **Root state persists in a volume; aico never seeds it from the host.** By
+   default each agent's root state (login + settings) lives in a volume scoped
+   to the current project (agent + path hash), so different projects using the
+   same agent never share state — this is the isolation guarantee and must not
+   be weakened by default. `--shared-root` is the explicit opt-in that switches
+   to the old behavior: one global volume per agent (`aico-auth-<agent>`),
+   created on first use and reused by every later `--shared-root` run. Nothing
+   from the host is read by default. API keys are forwarded **by name only**
+   (`-e KEY`, never `-e KEY=VALUE`) so secrets never appear in `argv`. Host
+   config is copied in only with `--import-config` (one-time `docker cp`, not a
+   bind mount). copilot-cli uses gnome-keyring (libsecret) running headlessly
+   via an entrypoint script; its token is stored in a keyring volume, not a raw
+   file. See `specs/shared-root-opt-in.md`.
 4. **One shared image holds all agents.** The agent to launch is chosen at run
    time; the entrypoint is not baked per-agent.
 5. **Cross-platform path logic lives only in `internal/platform`.** No other

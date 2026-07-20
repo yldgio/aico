@@ -1,15 +1,22 @@
-// Package agents defines the supported AI coding agents and how their login is
-// persisted across container sessions.
+// Package agents defines the supported AI coding agents and how their root
+// state (login + settings) is persisted across container sessions.
 //
-// Auth model (see specs/auth-volumes.md): each agent's login is preserved in a
-// per-agent, global named volume (aico-auth-<agent>). The user logs in once
-// inside the container and stays logged in for every future run of that agent.
-// Nothing from the host is mounted by default. The user can opt in to sharing
-// host config directories read-only with --share-config, but only where the
-// config dir is separate from the login store.
+// Auth model (see specs/auth-volumes.md and specs/shared-root-opt-in.md): each
+// agent's root state lives in a named Docker volume. By default that volume is
+// scoped per project (agent + project path), so separate projects using the
+// same agent never share login/config state. Passing --shared-root switches to
+// a single global per-agent volume (aico-auth-<agent>), preserving the
+// original "log in once, every project shares it" behavior for users who want
+// it. Nothing from the host is mounted by default. The user can opt in to
+// importing host config with --import-config (a one-time copy, unrelated to
+// --shared-root).
 package agents
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/yldgio/aico/internal/container"
+)
 
 // PathBase identifies which host base directory a config source is relative to.
 type PathBase int
@@ -21,18 +28,22 @@ const (
 	BaseConfig
 )
 
-// AuthVolume is a named Docker volume that persists an agent's login across
-// sessions. The volume name is aico-auth-<agent>[-<Suffix>]; it is global per
-// agent (shared by every project) so logging in once keeps you logged in.
+// AuthVolume is a named Docker volume that persists part of an agent's root
+// state (login, settings, session data) across container runs.
+//
+// The resolved volume name depends on the root mode selected at run time (see
+// SharedVolumeName and ProjectVolumeName):
+//   - project-isolated (default): aico-auth-<agent>-<pathHash>[-<Suffix>]
+//   - shared (--shared-root):     aico-auth-<agent>[-<Suffix>]
 type AuthVolume struct {
-	Suffix string // optional volume-name suffix; empty => aico-auth-<agent>
+	Suffix string // optional volume-name suffix; empty => no suffix
 	Target string // absolute container path where the volume is mounted
 }
 
 // ConfigSource is a host config directory that is bind-mounted read-only into
 // the container only when the user passes --share-config. It must point at a
 // directory that is separate from any AuthVolume target (otherwise it would
-// collide with the persistent login volume).
+// collide with the persistent root volume).
 type ConfigSource struct {
 	Base   PathBase // which host base directory Rel is relative to
 	Rel    string   // path relative to Base, e.g. "opencode"
@@ -43,7 +54,7 @@ type ConfigSource struct {
 type Agent struct {
 	Name         string         // user-facing name, e.g. "copilot-cli"
 	Command      []string       // command + args to launch inside the container
-	AuthVolumes  []AuthVolume   // login volumes persisted across sessions
+	AuthVolumes  []AuthVolume   // root-state volumes persisted across sessions
 	ConfigMounts []ConfigSource // host config dirs shared only with --share-config
 	EnvVars      []string       // host env vars to forward by name if set
 }
@@ -107,12 +118,37 @@ var registry = map[string]Agent{
 	},
 }
 
-// VolumeName returns the global named volume for an AuthVolume of agent name.
-func VolumeName(agent string, v AuthVolume) string {
+// SharedVolumeName returns the global per-agent volume name for an AuthVolume,
+// reused by every project when --shared-root is passed. This is the same
+// naming scheme aico has always used (aico-auth-<agent>[-<Suffix>]), preserved
+// so existing global volumes keep working once a user opts into sharing.
+func SharedVolumeName(agent string, v AuthVolume) string {
 	if v.Suffix == "" {
 		return "aico-auth-" + agent
 	}
 	return "aico-auth-" + agent + "-" + v.Suffix
+}
+
+// ProjectVolumeName returns the default, project-scoped volume name for an
+// AuthVolume: aico-auth-<agent>-<pathHash>[-<Suffix>]. absPath must already be
+// an absolute, cleaned path (see internal/container.Hash) so the name is
+// stable across invocations for the same project.
+func ProjectVolumeName(agent string, v AuthVolume, absPath string) string {
+	name := "aico-auth-" + agent + "-" + container.Hash(absPath)
+	if v.Suffix != "" {
+		name += "-" + v.Suffix
+	}
+	return name
+}
+
+// VolumeName returns the resolved volume name for an AuthVolume given the
+// requested root mode: SharedVolumeName when shared is true, otherwise
+// ProjectVolumeName (the default, isolated-per-project behavior).
+func VolumeName(agent string, v AuthVolume, absPath string, shared bool) string {
+	if shared {
+		return SharedVolumeName(agent, v)
+	}
+	return ProjectVolumeName(agent, v, absPath)
 }
 
 // Names returns the sorted list of supported agent names.

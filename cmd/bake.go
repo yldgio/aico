@@ -23,6 +23,7 @@ type bakeOpts struct {
 	runtime          string
 	dryRun           bool
 	verbose          bool
+	sharedRoot       bool
 }
 
 func newBakeCmd() *cobra.Command {
@@ -67,6 +68,7 @@ func newBakeCmd() *cobra.Command {
 	f.StringVar(&o.runtime, "runtime", "", "container runtime to use (default: auto-detect docker, then podman)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "print the commit/build plan without executing")
 	f.BoolVar(&o.verbose, "verbose", false, "print extra signal, e.g. whether an existing container was reused")
+	f.BoolVar(&o.sharedRoot, "shared-root", false, "use one root volume shared by every project for this agent, instead of a per-project volume")
 	return c
 }
 
@@ -86,13 +88,13 @@ func bake(agentName, path string, o *bakeOpts) error {
 		image = images.DefaultTag
 	}
 	name := container.Name(agent.Name, absPath)
-	authPlan := auth.Build(agent, false)
+	authPlan := auth.Build(agent, absPath, o.sharedRoot)
 	mountSrc, workdir := platform.WorkspaceMount(absPath)
 	shortName := resolveContainerName("", agent.Name, absPath)
 
 	commonArgs := []string{"--name", name,
 		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
-	commonArgs = append(commonArgs, containerLabels(agent.Name, absPath, shortName, false)...)
+	commonArgs = append(commonArgs, containerLabels(agent.Name, absPath, shortName, string(authPlan.RootMode), false)...)
 	commonArgs = append(commonArgs, authPlan.Args...)
 
 	interactiveFlag := "-i"
@@ -110,7 +112,7 @@ func bake(agentName, path string, o *bakeOpts) error {
 	}
 
 	if o.dryRun {
-		printBakeDryRun(rtBin, image, name, interactiveFlag, commonArgs, agent, o, intermediateTag, absPath, workdir)
+		printBakeDryRun(rtBin, image, name, interactiveFlag, commonArgs, agent, o, intermediateTag, absPath, workdir, authPlan)
 		return nil
 	}
 
@@ -121,6 +123,23 @@ func bake(agentName, path string, o *bakeOpts) error {
 
 	if o.newContainer {
 		_ = rt.Remove(name)
+	}
+
+	// Root-mode conflict: recreate if this bake requests a different root mode
+	// than the existing container was created with (see cmd/run.go for the
+	// shared rootModeMismatch/confirmRootRecreate logic).
+	if !o.newContainer && rt.Exists(name) {
+		if mismatch, existingMode := rootModeMismatch(rt, name, authPlan.RootMode); mismatch {
+			ok, err := confirmRootRecreate(name, existingMode, string(authPlan.RootMode))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "aico: cancelled; container left unchanged.")
+				return nil
+			}
+			_ = rt.Remove(name)
+		}
 	}
 
 	if rt.Exists(name) {
@@ -188,12 +207,14 @@ func bakeWorkspace(rt *runtime.Runtime, intermediateTag, finalTag, absPath, work
 }
 
 func printBakeDryRun(rtBin, image, name, interactiveFlag string, commonArgs []string, agent agents.Agent,
-	o *bakeOpts, intermediateTag, absPath, workdir string) {
+	o *bakeOpts, intermediateTag, absPath, workdir string, authPlan auth.Plan) {
 	if rtBin == "" {
 		rtBin = "(none detected — install docker or podman)"
 	}
 	fmt.Fprintf(os.Stderr, "[dry-run] runtime:   %s\n", rtBin)
 	fmt.Fprintf(os.Stderr, "[dry-run] container: %s (used as-is if it exists; otherwise created via `docker create`, not started)\n", name)
+	fmt.Fprintf(os.Stderr, "[dry-run] root mode: %s\n", authPlan.RootMode)
+	fmt.Fprintf(os.Stderr, "[dry-run] root volumes: %s\n", strings.Join(authPlan.RootVolumes, ", "))
 
 	createArgs := append([]string{"create", interactiveFlag}, commonArgs...)
 	createArgs = append(createArgs, image)
