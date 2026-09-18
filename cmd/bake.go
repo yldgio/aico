@@ -190,7 +190,7 @@ func bakeWorkspace(rt *runtime.Runtime, intermediateTag, finalTag, absPath, work
 	if err != nil {
 		return fmt.Errorf("create build context: %w", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	dockerfilePath := filepath.Join(dir, "Dockerfile")
 	content := fmt.Sprintf("FROM %s\nCOPY . %s\nWORKDIR %s\n", intermediateTag, workdir, workdir)

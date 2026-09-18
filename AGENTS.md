@@ -77,6 +77,9 @@ go test ./...
 # Static analysis (must pass before commit)
 go vet ./...
 
+# Lint (CI gate: .github/workflows/lint.yml; config: .golangci.yml)
+golangci-lint run ./...
+
 # Format (must be clean before commit)
 gofmt -l .          # lists files needing formatting; should print nothing
 gofmt -w .          # apply

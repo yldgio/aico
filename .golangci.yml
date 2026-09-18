@@ -1,0 +1,10 @@
+version: "2"
+
+linters:
+  settings:
+    staticcheck:
+      # House style (AGENTS.md): user-facing errors intentionally end with
+      # "\n\nfix: ..." so every failure tells the user the next action.
+      # ST1005 ("error strings should not end with punctuation or newlines")
+      # conflicts with that convention, so it is disabled.
+      checks: ["all", "-ST1005"]
