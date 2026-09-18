@@ -14,18 +14,32 @@ import (
 
 // Label keys stored on every aico container.
 const (
-	labelAgent = "aico.agent"
-	labelPath  = "aico.path"
-	labelName  = "aico.name"
+	labelAgent  = "aico.agent"
+	labelPath   = "aico.path"
+	labelName   = "aico.name"
+	labelDevenv = "aico.devenv"
 )
 
-// containerLabels returns the --label args for a new container.
-func containerLabels(agentName, absPath, name string) []string {
-	return []string{
+// containerLabels returns the --label args for a new container. The
+// aico.devenv label is only set for devenv-mode containers, so containers for
+// non-devenv projects are labelled exactly as before.
+func containerLabels(agentName, absPath, name string, devenv bool) []string {
+	labels := []string{
 		"--label", labelAgent + "=" + agentName,
 		"--label", labelPath + "=" + absPath,
 		"--label", labelName + "=" + name,
 	}
+	if devenv {
+		labels = append(labels, "--label", labelDevenv+"=true")
+	}
+	return labels
+}
+
+// containerDevenv reports whether an existing container was created in devenv
+// mode, by reading its aico.devenv label.
+func containerDevenv(rt *runtime.Runtime, name string) bool {
+	v, err := rt.Inspect(name, fmt.Sprintf("{{index .Config.Labels %q}}", labelDevenv))
+	return err == nil && strings.TrimSpace(v) == "true"
 }
 
 // resolveContainerName determines the short name for a container.
@@ -73,6 +87,8 @@ func runByName(name string, extraArgs []string, o *runOpts) error {
 
 	agentCmd := append([]string{}, agent.Command...)
 	agentCmd = append(agentCmd, extraArgs...)
+	// A devenv-mode container must run its agent inside `devenv shell`.
+	agentCmd = devenvWrap(agentCmd, containerDevenv(rt, cName))
 
 	if rt.Running(cName) {
 		return rt.Exec(cName, isTTY(), agentCmd...)
