@@ -2,7 +2,7 @@
 
 > Goal: When a project folder contains `devenv.nix`, `aico run` launches the agent inside that project's devenv environment — built and cached inside the container, with zero new host requirements.
 > Date: 2026-09-16
-> Status: Active
+> Status: Complete (2026-09-18)
 
 ---
 

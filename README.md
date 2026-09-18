@@ -184,6 +184,28 @@ aico --version     # one line, e.g. "aico v0.1.2"
 aico version       # detailed: version, commit, build date, Go, os/arch
 ```
 
+### devenv support
+
+When a project folder contains a `devenv.nix` file, `aico run` automatically launches the agent inside that project's [devenv](https://devenv.sh) environment, giving the agent access to the project's exact toolchain. No changes to your workflow — it just works.
+
+**Trigger**: `aico` detects `devenv.nix` in the project root and enables devenv mode automatically. The first build downloads and compiles the environment (can take several minutes); a progress notice is printed to stderr. Subsequent runs reuse the cached Nix store and start immediately.
+
+**Opt out**: Pass `--no-devenv` to skip devenv mode even if `devenv.nix` is present. An explicit `--image` also disables devenv mode and takes precedence. Note: a container's mode is fixed at creation — if a container already exists in the opposite mode, aico prompts to recreate it interactively (non-interactive runs fail with a recreate hint); `--new` skips the prompt — even when `--image` is given.
+
+**Cache**: devenv environments are cached in a global shared Docker volume (`aico-nix`) that persists across projects. The store is content-addressed, so different projects reuse each other's packages when possible. To free the space: `docker volume rm aico-nix` (the volume is recreated on the next devenv run).
+
+**Services**: Services, processes, and profiles are **not** part of v1 — the shell environment only. Run `devenv up` manually inside the container if needed, or check the roadmap for planned enhancements.
+
+**Known limitation**: If a project's `devenv.nix` overrides `PATH` in a way that hides the agent binary, the agent launch will fail visibly. Use `--no-devenv` as a workaround or adjust the devenv config.
+
+Examples:
+
+```sh
+aico run pi                          # auto-activates devenv if devenv.nix exists
+aico run claude --no-devenv          # skip devenv even if present
+aico run pi --image custom:tag       # explicit image disables devenv
+```
+
 ### Flags
 
 | Flag | Description |
@@ -196,6 +218,7 @@ aico version       # detailed: version, commit, build date, Go, os/arch
 | `--verbose` | Print warnings, e.g. when an `--import-config` source directory is missing. |
 | `--dry-run` | Print what would run, without creating a container. |
 | `--import-config` | Copy host config into the container on first run (one-time; does not overwrite on resume). |
+| `--no-devenv` | Skip devenv mode even if the project has a `devenv.nix` file. By default, devenv mode is auto-activated when `devenv.nix` is present and `--image` is not set. |
 
 You can also set the runtime via the `AICO_RUNTIME` environment variable:
 

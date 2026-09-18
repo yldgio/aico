@@ -26,6 +26,7 @@ type runOpts struct {
 	importConfig bool
 	detach       bool
 	name         string
+	noDevenv     bool
 }
 
 func newRunCmd() *cobra.Command {
@@ -39,6 +40,12 @@ func newRunCmd() *cobra.Command {
 			"[-- args] are forwarded to the agent command.\n\n" +
 			"On first use a container is created; subsequent runs on the same path\n" +
 			"resume it. Use --new to discard and recreate it.\n\n" +
+			"devenv support: If the project folder contains a devenv.nix file, aico\n" +
+			"automatically launches the agent inside that project's devenv environment.\n" +
+			"Use --no-devenv to skip devenv mode even if devenv.nix is present.\n" +
+			"An explicit --image takes precedence and disables devenv mode.\n" +
+			"The Nix store is cached in a shared aico-nix Docker volume, so environments\n" +
+			"build only once and later runs start immediately.\n\n" +
 			"With -d the container stays running after the agent exits, so you\n" +
 			"can re-attach later or open a shell with `aico exec`. In an interactive\n" +
 			"session, quitting the agent drops you into a bash shell inside the\n" +
@@ -75,6 +82,7 @@ func newRunCmd() *cobra.Command {
 	f.BoolVar(&o.importConfig, "import-config", false, "copy host config into the container on first run (one-time; does not overwrite on resume)")
 	f.BoolVar(&o.shareConfig, "share-config", false, "deprecated: alias for --import-config")
 	_ = f.MarkHidden("share-config")
+	f.BoolVar(&o.noDevenv, "no-devenv", false, "skip devenv mode even if the project has a devenv.nix (default: false; devenv mode is used automatically when devenv.nix is present and --image is not set; --image also disables devenv mode)")
 	return c
 }
 
@@ -90,11 +98,21 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	}
 
 	rtBin := runtime.Resolve(o.runtime)
+	name := container.Name(agent.Name, absPath)
+
+	devenvDetected := hasDevenvNix(absPath)
+	devenvMode := decideDevenvMode(devenvDetected, o.noDevenv, o.image)
+	if devenvDetected && !o.noDevenv && !devenvMode {
+		fmt.Fprintln(os.Stderr, "aico: devenv.nix detected but --image given; skipping devenv environment")
+	}
+
 	image := o.image
 	if image == "" {
 		image = images.DefaultTag
+		if devenvMode {
+			image = images.DevenvTag
+		}
 	}
-	name := container.Name(agent.Name, absPath)
 	authPlan := auth.Build(agent, false) // shareConfig mounts removed; import-config copies instead
 
 	if o.verbose {
@@ -119,13 +137,13 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	}
 
 	// Common volume/workdir/label args shared by both -d and non-d creation.
-	commonArgs := []string{"--name", name,
-		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
-	commonArgs = append(commonArgs, containerLabels(agent.Name, absPath, shortName)...)
-	commonArgs = append(commonArgs, authPlan.Args...)
+	commonArgs := commonContainerArgs(name, mountSrc, workdir, agent.Name, absPath, shortName, devenvMode, authPlan.Args)
 
 	if o.dryRun {
-		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach, interactiveFlag)
+		if devenvMode {
+			fmt.Fprintln(os.Stderr, "[dry-run] devenv:    detected (devenv.nix found)")
+		}
+		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach, interactiveFlag, devenvMode)
 		return nil
 	}
 
@@ -153,12 +171,27 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		_ = rt.Remove(name)
 	}
 
+	// Mode conflict: the container's devenv mode is fixed at creation (image,
+	// /nix volume and command wrapping all differ), so a mismatch with the
+	// current run's mode requires recreating it. Confirm before destroying.
+	if !o.newContainer && rt.Exists(name) && containerDevenv(rt, name) != devenvMode {
+		ok, err := confirmDevenvRecreate(name, devenvMode)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "aico: cancelled; container left unchanged.")
+			return nil
+		}
+		_ = rt.Remove(name)
+	}
+
 	// Resume path: an existing container is reused unless --new was given.
 	if !o.newContainer && rt.Exists(name) {
 		if rt.Running(name) {
 			if isDetached(rt, name) {
 				// -d container (CMD=sleep infinity): exec agent into it.
-				return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY())...)
+				return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY(), devenvMode)...)
 			}
 			// Non-d container: re-attach to the running process.
 			return rt.Attach(name)
@@ -169,7 +202,7 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 			if err := rt.StartBackground(name); err != nil {
 				return fmt.Errorf("start container: %w", err)
 			}
-			return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY())...)
+			return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY(), devenvMode)...)
 		}
 		// Non-d container: interactive start (original behavior).
 		return rt.Start(name)
@@ -177,7 +210,12 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 
 	// Fresh container: ensure the image exists (unless the user supplied one).
 	if o.image == "" {
-		if err := images.EnsureBuilt(rt); err != nil {
+		if devenvMode {
+			printDevenvBuildNotice()
+			if err := images.EnsureDevenvBuilt(rt); err != nil {
+				return err
+			}
+		} else if err := images.EnsureBuilt(rt); err != nil {
 			return err
 		}
 	}
@@ -186,23 +224,19 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 
 	if o.detach {
 		// Create with sleep infinity as the main process, then exec agent.
-		createArgs := append([]string{"run", "-d"}, commonArgs...)
-		createArgs = append(createArgs, image, "sleep", "infinity")
-		if _, err := rt.Output(createArgs...); err != nil {
+		if _, err := rt.Output(detachCreateArgs(image, commonArgs)...); err != nil {
 			return fmt.Errorf("create detached container: %w", err)
 		}
 		if wantImport {
 			importConfig(rt, name, agent)
 		}
-		return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY())...)
+		return rt.Exec(name, isTTY(), agentExecCmd(agentCmd, isTTY(), devenvMode)...)
 	}
 
 	if wantImport {
 		// Split into create + cp + start so we can copy config before the
 		// agent starts.
-		createArgs := append([]string{"create", interactiveFlag}, commonArgs...)
-		createArgs = append(createArgs, image)
-		createArgs = append(createArgs, agentCmd...)
+		createArgs := launchArgs("create", interactiveFlag, image, commonArgs, devenvWrap(agentCmd, devenvMode))
 		if _, err := rt.Output(createArgs...); err != nil {
 			return fmt.Errorf("create container: %w", err)
 		}
@@ -211,10 +245,64 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	}
 
 	// Non-d, no import: single interactive run (current behavior).
-	createArgs := append([]string{"run", interactiveFlag}, commonArgs...)
-	createArgs = append(createArgs, image)
-	createArgs = append(createArgs, agentCmd...)
-	return rt.Run(createArgs...)
+	return rt.Run(launchArgs("run", interactiveFlag, image, commonArgs, devenvWrap(agentCmd, devenvMode))...)
+}
+
+// nixVolumeArg is the global Nix store volume shared by every devenv-mode
+// container. The store is content-addressed and immutable, so sharing it
+// across projects is safe and lets builds reuse each other's cache. Docker
+// pre-populates the volume from the image's /nix on first mount.
+const nixVolumeArg = "aico-nix:/nix"
+
+// commonContainerArgs builds the volume/workdir/label args shared by every
+// container-creating path. In devenv mode it also mounts the global Nix store
+// volume; non-devenv projects get exactly the args they got before.
+func commonContainerArgs(name, mountSrc, workdir, agentName, absPath, shortName string, devenv bool, authArgs []string) []string {
+	args := []string{"--name", name,
+		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
+	if devenv {
+		args = append(args, "-v", nixVolumeArg)
+	}
+	args = append(args, containerLabels(agentName, absPath, shortName, devenv)...)
+	return append(args, authArgs...)
+}
+
+// launchArgs builds the argv for creating a fresh agent container that runs
+// the agent as its main process: `run -it ...` or `create -it ...`.
+func launchArgs(verb, interactiveFlag, image string, commonArgs, agentCmd []string) []string {
+	args := append([]string{verb, interactiveFlag}, commonArgs...)
+	args = append(args, image)
+	return append(args, agentCmd...)
+}
+
+// detachCreateArgs builds the argv for creating a -d container, whose main
+// process is `sleep infinity` so the agent can be exec'd into it repeatedly.
+func detachCreateArgs(image string, commonArgs []string) []string {
+	args := append([]string{"run", "-d"}, commonArgs...)
+	return append(args, image, "sleep", "infinity")
+}
+
+// devenvWrap prefixes a command with `devenv shell --` when devenv mode is
+// active, so it runs inside the project's devenv environment, and returns it
+// unchanged otherwise. The `--` is required: without it devenv's own flag
+// parser consumes the agent's flags (e.g. `pi -p "prompt"`) instead of
+// passing them through.
+func devenvWrap(cmd []string, devenv bool) []string {
+	if !devenv {
+		return cmd
+	}
+	return append([]string{"devenv", "shell", "--"}, cmd...)
+}
+
+// printDevenvBuildNotice warns, before anything slow happens, that a devenv
+// project's environment is about to be realised. The first build downloads
+// and compiles the project's packages and can take several minutes; without
+// this notice it looks like a silent hang.
+func printDevenvBuildNotice() {
+	fmt.Fprintln(os.Stderr,
+		"aico: devenv.nix detected, building environment...\n"+
+			"aico: the first build installs the project's packages and can take several minutes; output follows.\n"+
+			"aico: the Nix store is cached in the aico-nix volume, so later runs start fast. Skip devenv with --no-devenv.")
 }
 
 // isDetached reports whether a container was created in detach mode.
@@ -233,14 +321,22 @@ func isDetached(rt *runtime.Runtime, name string) bool {
 // a one-line hint, then exec's bash; args are passed as argv (via $@) so no
 // shell quoting is required. In non-interactive mode it returns the agent
 // command unchanged, preserving scripted/piped execution.
-func agentExecCmd(agentCmd []string, tty bool) []string {
+//
+// In devenv mode both the agent and the fallback shell run inside
+// `devenv shell`, so the shell the user lands in has the project's
+// environment too.
+func agentExecCmd(agentCmd []string, tty, devenv bool) []string {
 	if !tty {
-		return agentCmd
+		return devenvWrap(agentCmd, devenv)
 	}
 	const hint = "echo 'aico: agent exited - you are in the container shell. " +
 		"relaunch the agent by name, or type exit (Ctrl-D) to leave (the container keeps running).'"
-	script := `"$@"; ` + hint + `; exec bash`
-	return append([]string{"bash", "-c", script, "aico"}, agentCmd...)
+	shell := "exec bash"
+	if devenv {
+		shell = "exec devenv shell -- bash"
+	}
+	script := `"$@"; ` + hint + `; ` + shell
+	return append([]string{"bash", "-c", script, "aico"}, devenvWrap(agentCmd, devenv)...)
 }
 
 // confirmDetachRecreate asks the user whether to destroy and recreate an
@@ -256,6 +352,31 @@ func confirmDetachRecreate(name string) (bool, error) {
 		"container %s was created in interactive mode.\n"+
 			"-d (detached) on an existing container requires recreating it, which destroys the current container.\n"+
 			"destroy and recreate it in detached mode? [y/N] ", name)
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return false, nil
+	}
+	return isAffirmative(line), nil
+}
+
+// confirmDevenvRecreate asks the user whether to destroy and recreate an
+// existing container whose devenv mode differs from this run's. A container's
+// devenv mode is fixed at creation (it decides the image, the /nix volume and
+// the startup command), so switching requires a fresh container. In
+// non-interactive mode (no TTY) it returns an error instead of prompting, so
+// scripts fail clearly rather than hang waiting for input.
+func confirmDevenvRecreate(name string, wantDevenv bool) (bool, error) {
+	was, now, keep := "in devenv mode", "without devenv", "drop --no-devenv/--image to keep using the existing devenv container"
+	if wantDevenv {
+		was, now, keep = "without devenv mode", "with devenv (devenv.nix found)", "keep using the existing container with `aico run ... --no-devenv`"
+	}
+	if !isTTY() {
+		return false, fmt.Errorf("container %s was created %s, but this run wants to start it %s; a container's devenv mode is fixed at creation, so aico cannot switch it\n\nfix: recreate it with `aico run ... --new` (this destroys the current container), or %s", name, was, now, keep)
+	}
+	fmt.Fprintf(os.Stderr,
+		"container %s was created %s, but this run wants to start it %s.\n"+
+			"a container's devenv mode is fixed at creation, so switching requires recreating it, which destroys the current container.\n"+
+			"destroy and recreate it? [y/N] ", name, was, now)
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		return false, nil
@@ -293,7 +414,22 @@ func resolvePath(path string) (string, error) {
 	return abs, nil
 }
 
-func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool, interactiveFlag string) {
+// hasDevenvNix reports whether a devenv.nix file exists directly under
+// absPath. Detection is pure Go (os.Stat only); it never shells out.
+func hasDevenvNix(absPath string) bool {
+	_, err := os.Stat(filepath.Join(absPath, "devenv.nix"))
+	return err == nil
+}
+
+// decideDevenvMode computes whether devenv mode should be active: the
+// project must have devenv.nix, the user must not have opted out with
+// --no-devenv, and an explicit --image must not have been given (a custom
+// image always wins over devenv).
+func decideDevenvMode(detected, noDevenv bool, image string) bool {
+	return detected && !noDevenv && image == ""
+}
+
+func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool, interactiveFlag string, devenv bool) {
 	if rtBin == "" {
 		rtBin = "(none detected — install docker or podman)"
 	}
@@ -302,19 +438,15 @@ func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd 
 	fmt.Fprintf(os.Stderr, "[dry-run] container: %s\n", name)
 	fmt.Fprintf(os.Stderr, "[dry-run] workspace: %s\n", workdir)
 	if detach {
-		createArgs := append([]string{"run", "-d"}, commonArgs...)
-		createArgs = append(createArgs, image, "sleep", "infinity")
-		fmt.Fprintf(os.Stderr, "[dry-run] create:    %s %s\n", rtBin, strings.Join(createArgs, " "))
+		fmt.Fprintf(os.Stderr, "[dry-run] create:    %s %s\n", rtBin, strings.Join(detachCreateArgs(image, commonArgs), " "))
 		execFlag := "-i"
 		if isTTY() {
 			execFlag = "-it"
 		}
-		execArgs := append([]string{"exec", execFlag, name}, agentExecCmd(agentCmd, isTTY())...)
+		execArgs := append([]string{"exec", execFlag, name}, agentExecCmd(agentCmd, isTTY(), devenv)...)
 		fmt.Fprintf(os.Stderr, "[dry-run] exec:      %s %s\n", rtBin, strings.Join(execArgs, " "))
 	} else {
-		createArgs := append([]string{"run", interactiveFlag}, commonArgs...)
-		createArgs = append(createArgs, image)
-		createArgs = append(createArgs, agentCmd...)
+		createArgs := launchArgs("run", interactiveFlag, image, commonArgs, devenvWrap(agentCmd, devenv))
 		fmt.Fprintf(os.Stderr, "[dry-run] command:   %s %s\n", rtBin, strings.Join(createArgs, " "))
 	}
 }

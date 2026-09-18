@@ -92,7 +92,7 @@ func bake(agentName, path string, o *bakeOpts) error {
 
 	commonArgs := []string{"--name", name,
 		"-v", fmt.Sprintf("%s:%s", mountSrc, workdir), "-w", workdir}
-	commonArgs = append(commonArgs, containerLabels(agent.Name, absPath, shortName)...)
+	commonArgs = append(commonArgs, containerLabels(agent.Name, absPath, shortName, false)...)
 	commonArgs = append(commonArgs, authPlan.Args...)
 
 	interactiveFlag := "-i"
