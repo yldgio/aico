@@ -1,7 +1,15 @@
 # aico agent image — a single image containing every supported agent.
 # aico selects which agent to launch at run time; the image is shared across
 # all agents for a given host.
-FROM node:22-bookworm-slim
+#
+# This Dockerfile has two build targets sharing one base stage:
+#   - `base`   (default, last-but-one stage): the plain agent image, tagged
+#              aico-agents:latest. Built with `docker build --target base`.
+#   - `devenv` (opt-in, FROM base): adds Nix + the devenv CLI, tagged
+#              aico-agents-devenv:latest. Built with `docker build --target devenv`.
+# `docker build` with no --target builds the LAST stage in the file, so both
+# aico.image.go build paths must always pass an explicit --target.
+FROM node:22-bookworm-slim AS base
 
 # Common tooling agents tend to rely on.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,3 +63,43 @@ WORKDIR /workspace
 
 # No ENTRYPOINT: aico supplies the agent command at `run` time.
 CMD ["bash"]
+
+# ---------------------------------------------------------------------------
+# devenv stage — opt-in, built only via `docker build --target devenv`.
+# Adds Nix + the devenv CLI on top of the base stage. Kept as a separate,
+# late stage so plain (non-devenv) users never pull these ~1GB+ layers, and so
+# the expensive npm/apt layers above stay cached when this stage changes.
+# ---------------------------------------------------------------------------
+FROM base AS devenv
+
+# xz-utils is required by the Nix installer to unpack its store tarball; it
+# isn't needed by the base image, so it's installed only in this stage.
+RUN apt-get update && apt-get install -y --no-install-recommends xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Single-user, no-daemon, root install (verified: devenv.sh's own "Windows
+# (WSL2)" instructions use this exact form for containers without systemd).
+# Single-user is required here, not multi-user/daemon: it puts the Nix store
+# at /nix owned by root with no nix-daemon service to manage, which is what
+# lets a later `docker run -v aico-nix:/nix` bind-mount the store directly.
+# Two root-specific quirks the installer hits in a plain container, worked
+# around here: (1) it shells out to `sudo` to create /nix even when already
+# root (no sudo in this image, so /nix is pre-created); (2) nix.conf still
+# defaults to `build-users-group = nixbld` even in single-user mode and
+# refuses to install unless that group exists and has a member other than
+# root (single-user mode never actually uses it to sandbox builds), so an
+# unrelated placeholder user fills that membership requirement.
+RUN mkdir -m 0755 /nix \
+    && groupadd -r nixbld \
+    && useradd -r -G nixbld -M -s /usr/sbin/nologin nixbld1 \
+    && curl -fsSL https://nixos.org/nix/install | sh -s -- --no-daemon
+
+# The single-user installer creates a profile under /root/.nix-profile and a
+# system-wide default profile under /nix/var/nix/profiles/default; put both
+# bin dirs on PATH so `nix`/`devenv` resolve in every exec form (`docker run`,
+# `docker exec`, login and non-login shells alike). devenv requires the
+# nix-command and flakes experimental features, which are opt-in upstream.
+ENV PATH="/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}" \
+    NIX_CONFIG="experimental-features = nix-command flakes"
+
+RUN nix profile install nixpkgs#devenv
