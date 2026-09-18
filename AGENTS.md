@@ -35,7 +35,7 @@ specs/devenv-support.md  devenv feature specification (see specs/aico.md for int
 
 - **Second image target**: `images/Dockerfile` has a base target with all agents, and a `devenv` target that layers Nix (single-user, no-daemon) and the devenv CLI on top. Images are tagged `aico-agents:latest` (base) and `aico-agents-devenv:latest` (devenv). Both use the same content-hash staleness mechanism; non-devenv users never pull the ~1GB Nix layer.
 - **Global Nix volume**: `aico-nix` is a Docker named volume mounted at `/nix` in devenv-mode containers. The store is content-addressed and immutable, so sharing across projects is safe and enables cross-project cache reuse. Docker pre-populates it from the image's `/nix` on first mount. Manual cleanup: `docker volume rm aico-nix`.
-- **Devenv mode label**: containers created in devenv mode are labeled `aico.devenv=true`; non-devenv containers have `aico.devenv=false`. A container's mode is fixed at creation; a conflicting run (e.g., creating plain, then running without `--no-devenv` after adding devenv.nix) triggers a confirm-or-recreate prompt (or errors with a hint in non-interactive mode), mirroring the `-d` mode-conflict precedent.
+- **Devenv mode label**: containers created in devenv mode are labeled `aico.devenv=true`; non-devenv containers have no `aico.devenv` label. A container's mode is fixed at creation; a conflicting run (e.g., creating plain, then running without `--no-devenv` after adding devenv.nix) triggers a confirm-or-recreate prompt (or errors with a hint in non-interactive mode), mirroring the `-d` mode-conflict precedent.
 
 ## Hard architectural constraints
 

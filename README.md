@@ -190,7 +190,7 @@ When a project folder contains a `devenv.nix` file, `aico run` automatically lau
 
 **Trigger**: `aico` detects `devenv.nix` in the project root and enables devenv mode automatically. The first build downloads and compiles the environment (can take several minutes); a progress notice is printed to stderr. Subsequent runs reuse the cached Nix store and start immediately.
 
-**Opt out**: Pass `--no-devenv` to skip devenv mode even if `devenv.nix` is present. An explicit `--image` also disables devenv mode and takes precedence.
+**Opt out**: Pass `--no-devenv` to skip devenv mode even if `devenv.nix` is present. An explicit `--image` also disables devenv mode and takes precedence. Note: a container's mode is fixed at creation — if a container already exists in the opposite mode, aico prompts to recreate it (`--new` skips the prompt) even when `--image` is given.
 
 **Cache**: devenv environments are cached in a global shared Docker volume (`aico-nix`) that persists across projects. The store is content-addressed, so different projects reuse each other's packages when possible. To free the space: `docker volume rm aico-nix` (the volume is recreated on the next devenv run).
 
