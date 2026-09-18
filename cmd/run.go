@@ -26,6 +26,7 @@ type runOpts struct {
 	importConfig bool
 	detach       bool
 	name         string
+	noDevenv     bool
 }
 
 func newRunCmd() *cobra.Command {
@@ -75,6 +76,7 @@ func newRunCmd() *cobra.Command {
 	f.BoolVar(&o.importConfig, "import-config", false, "copy host config into the container on first run (one-time; does not overwrite on resume)")
 	f.BoolVar(&o.shareConfig, "share-config", false, "deprecated: alias for --import-config")
 	_ = f.MarkHidden("share-config")
+	f.BoolVar(&o.noDevenv, "no-devenv", false, "skip devenv mode even if the project has a devenv.nix (default: false; devenv mode is used automatically when devenv.nix is present and --image is not set; --image also disables devenv mode)")
 	return c
 }
 
@@ -95,6 +97,12 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 		image = images.DefaultTag
 	}
 	name := container.Name(agent.Name, absPath)
+
+	devenvDetected := hasDevenvNix(absPath)
+	devenvMode := decideDevenvMode(devenvDetected, o.noDevenv, o.image)
+	if devenvDetected && !o.noDevenv && !devenvMode {
+		fmt.Fprintln(os.Stderr, "aico: devenv.nix detected but --image given; skipping devenv environment")
+	}
 	authPlan := auth.Build(agent, false) // shareConfig mounts removed; import-config copies instead
 
 	if o.verbose {
@@ -125,6 +133,9 @@ func runAgent(agentName, path string, extraArgs []string, o *runOpts) error {
 	commonArgs = append(commonArgs, authPlan.Args...)
 
 	if o.dryRun {
+		if devenvMode {
+			fmt.Fprintln(os.Stderr, "[dry-run] devenv:    detected (devenv.nix found)")
+		}
 		printDryRunDetach(rtBin, image, name, workdir, commonArgs, agentCmd, o.detach, interactiveFlag)
 		return nil
 	}
@@ -291,6 +302,21 @@ func resolvePath(path string) (string, error) {
 		return "", fmt.Errorf("project path does not exist: %s\n\nfix: pass an existing folder, e.g. aico run pi .", abs)
 	}
 	return abs, nil
+}
+
+// hasDevenvNix reports whether a devenv.nix file exists directly under
+// absPath. Detection is pure Go (os.Stat only); it never shells out.
+func hasDevenvNix(absPath string) bool {
+	_, err := os.Stat(filepath.Join(absPath, "devenv.nix"))
+	return err == nil
+}
+
+// decideDevenvMode computes whether devenv mode should be active: the
+// project must have devenv.nix, the user must not have opted out with
+// --no-devenv, and an explicit --image must not have been given (a custom
+// image always wins over devenv).
+func decideDevenvMode(detected, noDevenv bool, image string) bool {
+	return detected && !noDevenv && image == ""
 }
 
 func printDryRunDetach(rtBin, image, name, workdir string, commonArgs, agentCmd []string, detach bool, interactiveFlag string) {

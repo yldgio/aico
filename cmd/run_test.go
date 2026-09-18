@@ -1,10 +1,51 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestHasDevenvNix(t *testing.T) {
+	dir := t.TempDir()
+	if hasDevenvNix(dir) {
+		t.Errorf("hasDevenvNix(%q) = true, want false (no devenv.nix)", dir)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "devenv.nix"), []byte("{ }"), 0o644); err != nil {
+		t.Fatalf("write devenv.nix: %v", err)
+	}
+	if !hasDevenvNix(dir) {
+		t.Errorf("hasDevenvNix(%q) = false, want true (devenv.nix present)", dir)
+	}
+}
+
+func TestDecideDevenvMode(t *testing.T) {
+	cases := []struct {
+		name     string
+		detected bool
+		noDevenv bool
+		image    string
+		want     bool
+	}{
+		{"detected, no overrides", true, false, "", true},
+		{"not detected", false, false, "", false},
+		{"detected but --no-devenv", true, true, "", false},
+		{"detected but --image given", true, false, "custom:latest", false},
+		{"not detected, --no-devenv also set", false, true, "", false},
+		{"not detected, --image also set", false, false, "custom:latest", false},
+		{"detected, --no-devenv and --image both set", true, true, "custom:latest", false},
+		{"not detected, --no-devenv and --image both set", false, true, "custom:latest", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := decideDevenvMode(c.detected, c.noDevenv, c.image); got != c.want {
+				t.Errorf("decideDevenvMode(%v, %v, %q) = %v, want %v", c.detected, c.noDevenv, c.image, got, c.want)
+			}
+		})
+	}
+}
 
 func TestAgentExecCmd(t *testing.T) {
 	// Non-interactive: passthrough, unchanged.
