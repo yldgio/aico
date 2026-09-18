@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-09-18
+
+### Added
+
+- project-level devenv support (#12)
+
+### Documentation
+
+- add project-level devenv support spec (#6)
+
 ## [0.16.0] - 2026-07-05
 
 ### Added
@@ -15,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **bake:** document the bake command and mark the spec complete
 - **agents:** note bake.go in the architecture map and the fake-runtime-bin test pattern
+- promote changelog [0.16.0]
 
 ## [0.15.1] - 2026-06-27
 
@@ -256,6 +267,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add go install instructions and clarify release downloads
 - mark 0.1.0 release in changelog
 
+[0.17.0]: https://github.com/yldgio/aico/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/yldgio/aico/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/yldgio/aico/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/yldgio/aico/compare/v0.14.0...v0.15.0
