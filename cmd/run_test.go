@@ -118,7 +118,9 @@ func TestDevenvWrap(t *testing.T) {
 	if got := devenvWrap(in, false); !reflect.DeepEqual(got, in) {
 		t.Errorf("devenvWrap(off) = %v, want %v", got, in)
 	}
-	want := []string{"devenv", "shell", "pi", "-p", "x"}
+	// The `--` is required so devenv's own flag parser doesn't consume the
+	// agent's flags (here -p).
+	want := []string{"devenv", "shell", "--", "pi", "-p", "x"}
 	if got := devenvWrap(in, true); !reflect.DeepEqual(got, want) {
 		t.Errorf("devenvWrap(on) = %v, want %v", got, want)
 	}
@@ -129,18 +131,18 @@ func TestDevenvWrap(t *testing.T) {
 }
 
 func TestAgentExecCmdDevenv(t *testing.T) {
-	// Non-interactive devenv: the agent runs inside `devenv shell`.
-	want := []string{"devenv", "shell", "pi"}
-	if got := agentExecCmd([]string{"pi"}, false, true); !reflect.DeepEqual(got, want) {
+	// Non-interactive devenv: the agent runs inside `devenv shell --`.
+	want := []string{"devenv", "shell", "--", "pi", "--version"}
+	if got := agentExecCmd([]string{"pi", "--version"}, false, true); !reflect.DeepEqual(got, want) {
 		t.Errorf("non-tty devenv = %v, want %v", got, want)
 	}
 	// Interactive devenv: agent and the fallback shell both run in the env.
-	got := agentExecCmd([]string{"pi"}, true, true)
-	if last := got[4:]; !reflect.DeepEqual(last, []string{"devenv", "shell", "pi"}) {
-		t.Errorf("tty devenv agent argv = %v, want [devenv shell pi]", last)
+	got := agentExecCmd([]string{"pi", "--version"}, true, true)
+	if last := got[4:]; !reflect.DeepEqual(last, want) {
+		t.Errorf("tty devenv agent argv = %v, want %v", last, want)
 	}
-	if !strings.Contains(got[2], "exec devenv shell bash") {
-		t.Errorf("tty devenv fallback shell not in env: %q", got[2])
+	if !strings.Contains(got[2], "exec devenv shell -- bash") {
+		t.Errorf("tty devenv fallback shell not in env (or missing --): %q", got[2])
 	}
 }
 
@@ -170,27 +172,33 @@ func TestCommonContainerArgsDevenv(t *testing.T) {
 	}
 }
 
-// launchArgv builds the argv for every launch path with a fixed, readable
-// input set, so tests can assert what aico hands to the runtime CLI.
+// launchArgv builds the argv inputs for every launch path with a fixed,
+// readable input set, so tests can assert what aico hands to the runtime CLI.
+// The agent carries a flag of its own (--version) because devenv's flag
+// parser would swallow it if the `--` separator were missing.
 func launchArgv(devenv bool) (common, agentCmd []string, image string) {
 	image = "aico-agents:latest"
 	if devenv {
 		image = "aico-agents-devenv:latest"
 	}
 	common = commonContainerArgs("aico-pi-abc123", "/proj", "/workspace", "pi", "/proj", "pi-proj", devenv, nil)
-	return common, []string{"pi"}, image
+	return common, []string{"pi", "--version"}, image
 }
 
 func TestLaunchPathsArgv(t *testing.T) {
 	for _, devenv := range []bool{false, true} {
 		common, agentCmd, image := launchArgv(devenv)
+		wantAgent := []string{"pi", "--version"}
+		if devenv {
+			wantAgent = []string{"devenv", "shell", "--", "pi", "--version"}
+		}
 
 		t.Run(pathLabel("interactive-run", devenv), func(t *testing.T) {
 			rt, argv := fakeRuntime(t)
 			if err := rt.Run(launchArgs("run", "-it", image, common, devenvWrap(agentCmd, devenv))...); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			assertLaunchArgv(t, argv(), "run", image, devenv, []string{"pi"})
+			assertLaunchArgv(t, argv(), "run", image, devenv, wantAgent)
 		})
 
 		t.Run(pathLabel("create-start", devenv), func(t *testing.T) {
@@ -198,7 +206,7 @@ func TestLaunchPathsArgv(t *testing.T) {
 			if _, err := rt.Output(launchArgs("create", "-it", image, common, devenvWrap(agentCmd, devenv))...); err != nil {
 				t.Fatalf("Output: %v", err)
 			}
-			assertLaunchArgv(t, argv(), "create", image, devenv, []string{"pi"})
+			assertLaunchArgv(t, argv(), "create", image, devenv, wantAgent)
 		})
 
 		t.Run(pathLabel("detach-create", devenv), func(t *testing.T) {
@@ -219,10 +227,7 @@ func TestLaunchPathsArgv(t *testing.T) {
 				t.Fatalf("Exec: %v", err)
 			}
 			got := argv()
-			want := []string{"exec", "-i", "aico-pi-abc123", "pi"}
-			if devenv {
-				want = []string{"exec", "-i", "aico-pi-abc123", "devenv", "shell", "pi"}
-			}
+			want := append([]string{"exec", "-i", "aico-pi-abc123"}, wantAgent...)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("exec argv = %v, want %v", got, want)
 			}
@@ -240,7 +245,7 @@ func pathLabel(name string, devenv bool) string {
 // assertLaunchArgv checks the shared shape of a container-creating argv: the
 // verb, the image, the devenv volume/label (present only in devenv mode), and
 // the command that follows the image.
-func assertLaunchArgv(t *testing.T, got []string, verb, image string, devenv bool, cmdAfterImage []string) {
+func assertLaunchArgv(t *testing.T, got []string, verb, image string, devenv bool, wantCmd []string) {
 	t.Helper()
 	if got[0] != verb {
 		t.Errorf("verb = %q, want %q (argv %v)", got[0], verb, got)
@@ -254,10 +259,6 @@ func assertLaunchArgv(t *testing.T, got []string, verb, image string, devenv boo
 	}
 	if idx < 0 {
 		t.Fatalf("image %q not in argv %v", image, got)
-	}
-	wantCmd := cmdAfterImage
-	if devenv && cmdAfterImage[0] == "pi" {
-		wantCmd = append([]string{"devenv", "shell"}, cmdAfterImage...)
 	}
 	if !reflect.DeepEqual(got[idx+1:], wantCmd) {
 		t.Errorf("command after image = %v, want %v", got[idx+1:], wantCmd)

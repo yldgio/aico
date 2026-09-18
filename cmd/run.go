@@ -276,14 +276,16 @@ func detachCreateArgs(image string, commonArgs []string) []string {
 	return append(args, image, "sleep", "infinity")
 }
 
-// devenvWrap prefixes a command with `devenv shell` when devenv mode is
+// devenvWrap prefixes a command with `devenv shell --` when devenv mode is
 // active, so it runs inside the project's devenv environment, and returns it
-// unchanged otherwise.
+// unchanged otherwise. The `--` is required: without it devenv's own flag
+// parser consumes the agent's flags (e.g. `pi -p "prompt"`) instead of
+// passing them through.
 func devenvWrap(cmd []string, devenv bool) []string {
 	if !devenv {
 		return cmd
 	}
-	return append([]string{"devenv", "shell"}, cmd...)
+	return append([]string{"devenv", "shell", "--"}, cmd...)
 }
 
 // printDevenvBuildNotice warns, before anything slow happens, that a devenv
@@ -325,7 +327,7 @@ func agentExecCmd(agentCmd []string, tty, devenv bool) []string {
 		"relaunch the agent by name, or type exit (Ctrl-D) to leave (the container keeps running).'"
 	shell := "exec bash"
 	if devenv {
-		shell = "exec devenv shell bash"
+		shell = "exec devenv shell -- bash"
 	}
 	script := `"$@"; ` + hint + `; ` + shell
 	return append([]string{"bash", "-c", script, "aico"}, devenvWrap(agentCmd, devenv)...)
