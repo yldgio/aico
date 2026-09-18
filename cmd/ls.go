@@ -152,12 +152,12 @@ func listContainers(rtOverride string) error {
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-		fmt.Fprintln(os.Stderr, "no aico containers found")
+		_, _ = fmt.Fprintln(os.Stderr, "no aico containers found")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tAGENT\tPATH\tSTATUS")
+	_, _ = fmt.Fprintln(w, "NAME\tAGENT\tPATH\tSTATUS")
 
 	for _, line := range lines {
 		parts := strings.SplitN(line, "\t", 2)
@@ -185,12 +185,12 @@ func listContainers(rtOverride string) error {
 			displayName = cName // fallback for containers created before labels
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 			displayName,
 			strings.TrimSpace(aName),
 			strings.TrimSpace(aPath),
 			shortStatus)
 	}
-	w.Flush()
+	_ = w.Flush()
 	return nil
 }

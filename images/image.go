@@ -82,7 +82,7 @@ func ensureBuilt(r *runtime.Runtime, tag, target string) error {
 	if err != nil {
 		return fmt.Errorf("create build context: %w", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	// Write all embedded files into the build context directory.
 	err = fs.WalkDir(buildContext, ".", func(path string, d fs.DirEntry, walkErr error) error {

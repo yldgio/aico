@@ -15,13 +15,13 @@ func extractTarGz(archive, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	tr := tar.NewReader(gr)
 	for {
@@ -46,10 +46,10 @@ func extractTarGz(archive, destDir string) error {
 			return err
 		}
 		if _, err := io.Copy(out, tr); err != nil {
-			out.Close()
+			_ = out.Close()
 			return err
 		}
-		out.Close()
+		_ = out.Close()
 	}
 	return nil
 }
@@ -59,7 +59,7 @@ func extractZip(archive, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
@@ -76,12 +76,12 @@ func extractZip(archive, destDir string) error {
 		}
 		out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return err
 		}
 		_, cpErr := io.Copy(out, rc)
-		out.Close()
-		rc.Close()
+		_ = out.Close()
+		_ = rc.Close()
 		if cpErr != nil {
 			return cpErr
 		}

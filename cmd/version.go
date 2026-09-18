@@ -67,7 +67,7 @@ func newVersionCmd(bi BuildInfo) *cobra.Command {
 		Short: "Print version information",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprint(cmd.OutOrStdout(), bi.long())
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), bi.long())
 		},
 	}
 }

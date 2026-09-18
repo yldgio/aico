@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 		record := os.Getenv("AICO_TEST_FAKE_BIN_RECORD")
 		_ = os.WriteFile(record, []byte(strings.Join(os.Args[1:], " ")), 0o644)
 		if out := os.Getenv("AICO_TEST_FAKE_BIN_STDOUT"); out != "" {
-			os.Stdout.WriteString(out)
+			_, _ = os.Stdout.WriteString(out)
 		}
 		// FAIL only simulates a missing image/label (ImageExists/ImageLabel
 		// probes); a "build" invocation always "succeeds" so tests can

@@ -140,7 +140,7 @@ func purge(rtOverride string) error {
 		if !strings.HasPrefix(vol, "aico-auth-") {
 			continue
 		}
-		rt.Output("volume", "rm", "-f", vol)
+		_, _ = rt.Output("volume", "rm", "-f", vol)
 		fmt.Fprintf(os.Stderr, "  removed %s\n", vol)
 	}
 
