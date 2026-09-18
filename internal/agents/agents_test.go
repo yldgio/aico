@@ -54,7 +54,9 @@ func TestProjectVolumeNameStableForSamePath(t *testing.T) {
 	a, _ := Lookup("pi")
 	v := a.AuthVolumes[0]
 	const path = "/tmp/project"
-	if ProjectVolumeName("pi", v, path) != ProjectVolumeName("pi", v, path) {
+	n1 := ProjectVolumeName("pi", v, path)
+	n2 := ProjectVolumeName("pi", v, path)
+	if n1 != n2 {
 		t.Fatalf("ProjectVolumeName must be deterministic for the same path")
 	}
 }
