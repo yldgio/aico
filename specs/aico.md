@@ -59,6 +59,14 @@ It is a public OSS CLI binary — any developer should be able to clone the repo
 
 ---
 
+## Extensions
+
+### devenv support
+
+For project-level toolchain management via [devenv](https://devenv.sh/), see [`specs/devenv-support.md`](devenv-support.md). When a project contains `devenv.nix`, `aico run` automatically launches the agent inside that devenv environment, giving the agent access to the exact tools declared in the project. devenv mode is auto-detected and can be skipped with `--no-devenv`; an explicit `--image` also disables devenv mode. The feature uses a second image target (`aico-agents-devenv:latest`) and a global `aico-nix` volume for cross-project cache reuse.
+
+---
+
 ## Constraints & Assumptions
 
 ### Hard Constraints

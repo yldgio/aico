@@ -40,6 +40,12 @@ func newRunCmd() *cobra.Command {
 			"[-- args] are forwarded to the agent command.\n\n" +
 			"On first use a container is created; subsequent runs on the same path\n" +
 			"resume it. Use --new to discard and recreate it.\n\n" +
+			"devenv support: If the project folder contains a devenv.nix file, aico\n" +
+			"automatically launches the agent inside that project's devenv environment.\n" +
+			"Use --no-devenv to skip devenv mode even if devenv.nix is present.\n" +
+			"An explicit --image takes precedence and disables devenv mode.\n" +
+			"The Nix store is cached in a shared aico-nix Docker volume, so environments\n" +
+			"build only once and later runs start immediately.\n\n" +
 			"With -d the container stays running after the agent exits, so you\n" +
 			"can re-attach later or open a shell with `aico exec`. In an interactive\n" +
 			"session, quitting the agent drops you into a bash shell inside the\n" +
