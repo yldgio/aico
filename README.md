@@ -194,7 +194,7 @@ When a project folder contains a `devenv.nix` file, `aico run` automatically lau
 
 **Cache**: devenv environments are cached in a global shared Docker volume (`aico-nix`) that persists across projects. The store is content-addressed, so different projects reuse each other's packages when possible. To free the space: `docker volume rm aico-nix` (the volume is recreated on the next devenv run).
 
-**Services**: devenv's full feature set (services, processes, profiles) is v1 scope. The shell environment is supported; services like `devenv up` are not yet integrated. Run `devenv up` manually inside the container if needed, or check the roadmap for planned enhancements.
+**Services**: Services, processes, and profiles are **not** part of v1 — the shell environment only. Run `devenv up` manually inside the container if needed, or check the roadmap for planned enhancements.
 
 **Known limitation**: If a project's `devenv.nix` overrides `PATH` in a way that hides the agent binary, the agent launch will fail visibly. Use `--no-devenv` as a workaround or adjust the devenv config.
 
