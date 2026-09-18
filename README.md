@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/yldgio/aico/actions/workflows/ci.yml/badge.svg)](https://github.com/yldgio/aico/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yldgio/aico)](https://goreportcard.com/report/github.com/yldgio/aico)
+[![lint](https://github.com/yldgio/aico/actions/workflows/lint.yml/badge.svg)](https://github.com/yldgio/aico/actions/workflows/lint.yml)
 
 **One command to launch an AI coding agent in an isolated container with persistent login.**
 
